@@ -1,0 +1,40 @@
+[package]
+name = "alice-ml"
+version = "0.1.0"
+edition = "2021"
+authors = ["Moroya Sakamoto"]
+description = "1.58bit Ternary Inference Engine - Multiplication is expensive. Addition is all you need."
+license = "AGPL-3.0"
+repository = "https://github.com/ext-sakamoro/ALICE-ML"
+keywords = ["machine-learning", "inference", "quantization", "bitnet", "simd"]
+categories = ["science", "no-std"]
+
+[lib]
+name = "alice_ml"
+crate-type = ["rlib", "staticlib"]
+
+[features]
+default = ["std"]
+std = []
+simd = []  # Enable hand-tuned SIMD kernels
+
+[dependencies]
+# Zero dependencies for core functionality
+
+[dev-dependencies]
+criterion = "0.5"
+rand = "0.8"
+
+[[bench]]
+name = "matmul"
+harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+panic = "abort"
+
+[profile.bench]
+lto = true
+opt-level = 3
