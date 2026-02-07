@@ -4,6 +4,8 @@
 
 > "Multiplication is expensive. Addition is all you need."
 
+English | [日本語](README_JP.md)
+
 A radical inference engine based on BitNet b1.58 research that eliminates floating-point multiplication entirely. All matrix operations use only addition and subtraction with ternary weights {-1, 0, +1}.
 
 ## The Revolution
