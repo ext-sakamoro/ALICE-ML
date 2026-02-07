@@ -87,9 +87,9 @@ pub fn quantize_to_ternary(
     assert_eq!(weights.len(), out_features * in_features);
 
     // Compute scale (mean absolute value)
+    let inv_len = 1.0 / weights.len() as f32;
     let sum_abs: f32 = weights.iter().map(|w| w.abs()).sum();
-    let scale = sum_abs / weights.len() as f32;
-    let scale = scale.max(1e-8); // Prevent division by zero
+    let scale = (sum_abs * inv_len).max(1e-8);
 
     // Quantize
     let mut ternary_values = vec![0i8; weights.len()];
@@ -100,6 +100,7 @@ pub fn quantize_to_ternary(
     };
 
     let mut mae_sum = 0.0f32;
+    let inv_scale = 1.0 / scale;
 
     for (i, &w) in weights.iter().enumerate() {
         // Track range
@@ -107,7 +108,7 @@ pub fn quantize_to_ternary(
         stats.original_range.1 = stats.original_range.1.max(w);
 
         // Quantize: round(w / scale) clamped to {-1, 0, +1}
-        let scaled = w / scale;
+        let scaled = w * inv_scale;
         let quantized = scaled.round().clamp(-1.0, 1.0) as i8;
 
         ternary_values[i] = quantized;
@@ -124,7 +125,7 @@ pub fn quantize_to_ternary(
         mae_sum += (w - reconstructed).abs();
     }
 
-    stats.mae = mae_sum / weights.len() as f32;
+    stats.mae = mae_sum * inv_len;
 
     let tw = TernaryWeight::from_ternary(&ternary_values, out_features, in_features);
     let mut tw = tw;
@@ -146,8 +147,9 @@ pub fn quantize_to_ternary_sparse(
     assert_eq!(weights.len(), out_features * in_features);
 
     // Compute scale
+    let inv_len = 1.0 / weights.len() as f32;
     let sum_abs: f32 = weights.iter().map(|w| w.abs()).sum();
-    let scale = (sum_abs / weights.len() as f32).max(1e-8);
+    let scale = (sum_abs * inv_len).max(1e-8);
 
     let cutoff = threshold * scale;
 
@@ -185,7 +187,7 @@ pub fn quantize_to_ternary_sparse(
         mae_sum += (w - reconstructed).abs();
     }
 
-    stats.mae = mae_sum / weights.len() as f32;
+    stats.mae = mae_sum * inv_len;
 
     let tw = TernaryWeight::from_packed(
         TernaryWeight::from_ternary(&ternary_values, out_features, in_features).packed().to_vec(),
