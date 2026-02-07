@@ -1,6 +1,8 @@
 //! Tensor: Zero-Allocation N-dimensional Array (Supernova Edition)
 //!
 //! All tensors are borrowed slices from Arena. No heap allocations in hot path.
+//!
+//! Author: Moroya Sakamoto
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -152,8 +154,15 @@ pub fn tensor_add(a: &Tensor, b: &Tensor, out: &mut Tensor) {
     debug_assert_eq!(a.shape(), b.shape());
     debug_assert_eq!(a.shape(), out.shape());
 
-    for ((o, &av), &bv) in out.data.iter_mut().zip(a.data.iter()).zip(b.data.iter()) {
-        *o = av + bv;
+    #[cfg(all(target_arch = "x86_64", feature = "simd"))]
+    {
+        simd_add_f32(a.data, b.data, out.data);
+    }
+    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
+    {
+        for ((o, &av), &bv) in out.data.iter_mut().zip(a.data.iter()).zip(b.data.iter()) {
+            *o = av + bv;
+        }
     }
 }
 
@@ -163,8 +172,15 @@ pub fn tensor_sub(a: &Tensor, b: &Tensor, out: &mut Tensor) {
     debug_assert_eq!(a.shape(), b.shape());
     debug_assert_eq!(a.shape(), out.shape());
 
-    for ((o, &av), &bv) in out.data.iter_mut().zip(a.data.iter()).zip(b.data.iter()) {
-        *o = av - bv;
+    #[cfg(all(target_arch = "x86_64", feature = "simd"))]
+    {
+        simd_sub_f32(a.data, b.data, out.data);
+    }
+    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
+    {
+        for ((o, &av), &bv) in out.data.iter_mut().zip(a.data.iter()).zip(b.data.iter()) {
+            *o = av - bv;
+        }
     }
 }
 
@@ -173,27 +189,94 @@ pub fn tensor_sub(a: &Tensor, b: &Tensor, out: &mut Tensor) {
 pub fn tensor_scale(a: &Tensor, scalar: f32, out: &mut Tensor) {
     debug_assert_eq!(a.shape(), out.shape());
 
-    for (o, &av) in out.data.iter_mut().zip(a.data.iter()) {
-        *o = av * scalar;
+    #[cfg(all(target_arch = "x86_64", feature = "simd"))]
+    {
+        use core::arch::x86_64::*;
+        let n = a.data.len();
+        let chunks = n / 8;
+        let remainder = n % 8;
+        unsafe {
+            let s = _mm256_set1_ps(scalar);
+            for i in 0..chunks {
+                let offset = i * 8;
+                let va = _mm256_loadu_ps(a.data.as_ptr().add(offset));
+                let vr = _mm256_mul_ps(va, s);
+                _mm256_storeu_ps(out.data.as_mut_ptr().add(offset), vr);
+            }
+        }
+        let tail = chunks * 8;
+        for i in 0..remainder {
+            out.data[tail + i] = a.data[tail + i] * scalar;
+        }
+    }
+    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
+    {
+        for (o, &av) in out.data.iter_mut().zip(a.data.iter()) {
+            *o = av * scalar;
+        }
     }
 }
 
-/// ReLU activation: out = max(a, 0)
+/// ReLU activation: out = max(a, 0) — branchless
 #[inline]
 pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
     debug_assert_eq!(a.shape(), out.shape());
 
-    for (o, &av) in out.data.iter_mut().zip(a.data.iter()) {
-        *o = if av > 0.0 { av } else { 0.0 };
+    #[cfg(all(target_arch = "x86_64", feature = "simd"))]
+    {
+        use core::arch::x86_64::*;
+        let n = a.data.len();
+        let chunks = n / 8;
+        let remainder = n % 8;
+        unsafe {
+            let zero = _mm256_setzero_ps();
+            for i in 0..chunks {
+                let offset = i * 8;
+                let va = _mm256_loadu_ps(a.data.as_ptr().add(offset));
+                let vr = _mm256_max_ps(va, zero);
+                _mm256_storeu_ps(out.data.as_mut_ptr().add(offset), vr);
+            }
+        }
+        let tail = chunks * 8;
+        for i in 0..remainder {
+            out.data[tail + i] = a.data[tail + i].max(0.0);
+        }
+    }
+    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
+    {
+        for (o, &av) in out.data.iter_mut().zip(a.data.iter()) {
+            *o = av.max(0.0); // branchless: compiles to maxss/maxps
+        }
     }
 }
 
-/// ReLU in-place
+/// ReLU in-place — branchless
 #[inline]
 pub fn tensor_relu_inplace(a: &mut Tensor) {
-    for x in a.data.iter_mut() {
-        if *x < 0.0 {
-            *x = 0.0;
+    #[cfg(all(target_arch = "x86_64", feature = "simd"))]
+    {
+        use core::arch::x86_64::*;
+        let n = a.data.len();
+        let chunks = n / 8;
+        let remainder = n % 8;
+        unsafe {
+            let zero = _mm256_setzero_ps();
+            for i in 0..chunks {
+                let offset = i * 8;
+                let va = _mm256_loadu_ps(a.data.as_ptr().add(offset));
+                let vr = _mm256_max_ps(va, zero);
+                _mm256_storeu_ps(a.data.as_mut_ptr().add(offset), vr);
+            }
+        }
+        let tail = chunks * 8;
+        for i in 0..remainder {
+            a.data[tail + i] = a.data[tail + i].max(0.0);
+        }
+    }
+    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
+    {
+        for x in a.data.iter_mut() {
+            *x = x.max(0.0); // branchless: compiles to maxss
         }
     }
 }
@@ -222,10 +305,17 @@ pub fn tensor_softmax(a: &Tensor, out: &mut Tensor) {
             sum += *o;
         }
 
-        // Normalize
-        let inv_sum = 1.0 / sum;
-        for o in out_slice.iter_mut() {
-            *o *= inv_sum;
+        // Normalize (guard against sum=0 when all inputs are -inf)
+        if sum > 0.0 {
+            let inv_sum = 1.0 / sum;
+            for o in out_slice.iter_mut() {
+                *o *= inv_sum;
+            }
+        } else {
+            let uniform = 1.0 / last_dim as f32;
+            for o in out_slice.iter_mut() {
+                *o = uniform;
+            }
         }
     }
 }
@@ -259,6 +349,48 @@ pub fn tensor_min(a: &Tensor) -> f32 {
 pub fn tensor_copy(src: &Tensor, dst: &mut Tensor) {
     debug_assert_eq!(src.len(), dst.len());
     dst.data.copy_from_slice(src.data);
+}
+
+/// SIMD 8-wide f32 add: out = a + b
+#[cfg(all(target_arch = "x86_64", feature = "simd"))]
+#[inline]
+fn simd_add_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
+    use core::arch::x86_64::*;
+    let n = a.len();
+    let chunks = n / 8;
+    unsafe {
+        for i in 0..chunks {
+            let offset = i * 8;
+            let va = _mm256_loadu_ps(a.as_ptr().add(offset));
+            let vb = _mm256_loadu_ps(b.as_ptr().add(offset));
+            _mm256_storeu_ps(out.as_mut_ptr().add(offset), _mm256_add_ps(va, vb));
+        }
+    }
+    let tail = chunks * 8;
+    for i in tail..n {
+        out[i] = a[i] + b[i];
+    }
+}
+
+/// SIMD 8-wide f32 sub: out = a - b
+#[cfg(all(target_arch = "x86_64", feature = "simd"))]
+#[inline]
+fn simd_sub_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
+    use core::arch::x86_64::*;
+    let n = a.len();
+    let chunks = n / 8;
+    unsafe {
+        for i in 0..chunks {
+            let offset = i * 8;
+            let va = _mm256_loadu_ps(a.as_ptr().add(offset));
+            let vb = _mm256_loadu_ps(b.as_ptr().add(offset));
+            _mm256_storeu_ps(out.as_mut_ptr().add(offset), _mm256_sub_ps(va, vb));
+        }
+    }
+    let tail = chunks * 8;
+    for i in tail..n {
+        out[i] = a[i] - b[i];
+    }
 }
 
 // ============================================================================
@@ -468,9 +600,9 @@ mod tests {
         data.copy_from_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
 
         let t = Tensor::from_arena(data, &[2, 3]);
-        assert_eq!(t.shape(), &[2, 3]);
-        assert_eq!(t.ndim(), 2);
-        assert_eq!(t.len(), 6);
+        assert_eq!(t.shape(), &[2, 3], "shape should be [2, 3]");
+        assert_eq!(t.ndim(), 2, "ndim should be 2");
+        assert_eq!(t.len(), 6, "total elements should be 6");
     }
 
     #[test]
@@ -478,8 +610,8 @@ mod tests {
         let mut arena = Arena::new(4096);
         let t = Tensor::zeros(&mut arena, &[3, 4]).unwrap();
 
-        assert_eq!(t.shape(), &[3, 4]);
-        assert!(t.data().iter().all(|&x| x == 0.0));
+        assert_eq!(t.shape(), &[3, 4], "shape should be [3, 4]");
+        assert!(t.data().iter().all(|&x| x == 0.0), "all elements should be zero");
     }
 
     #[test]
@@ -489,10 +621,10 @@ mod tests {
         data.copy_from_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
 
         let t = Tensor::from_arena(data, &[2, 3]);
-        assert_eq!(t.get(&[0, 0]), 1.0);
-        assert_eq!(t.get(&[0, 2]), 3.0);
-        assert_eq!(t.get(&[1, 0]), 4.0);
-        assert_eq!(t.get(&[1, 2]), 6.0);
+        assert_eq!(t.get(&[0, 0]), 1.0, "t[0,0] should be 1.0");
+        assert_eq!(t.get(&[0, 2]), 3.0, "t[0,2] should be 3.0");
+        assert_eq!(t.get(&[1, 0]), 4.0, "t[1,0] should be 4.0");
+        assert_eq!(t.get(&[1, 2]), 6.0, "t[1,2] should be 6.0");
     }
 
     // DPS tests using stack arrays (avoids Arena borrow conflicts)
@@ -590,16 +722,16 @@ mod tests {
         let input = [1.0f32, -1.0, 0.5, -0.5];
         let qt = QuantizedTensor::from_f32_slice(&input, &[4]);
 
-        assert_eq!(qt.shape(), &[4]);
-        assert!(qt.scale() > 0.0);
+        assert_eq!(qt.shape(), &[4], "quantized shape should be [4]");
+        assert!(qt.scale() > 0.0, "scale should be positive");
 
         // Dequantize
         let mut output = [0.0f32; 4];
         qt.dequantize_to(&mut output);
 
         // Check approximate equality
-        for (o, &i) in output.iter().zip(input.iter()) {
-            assert!((o - i).abs() < 0.02);
+        for (idx, (o, &i)) in output.iter().zip(input.iter()).enumerate() {
+            assert!((o - i).abs() < 0.02, "dequantized[{}] = {}, expected ~{}", idx, o, i);
         }
     }
 

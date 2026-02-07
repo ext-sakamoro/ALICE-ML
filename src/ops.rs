@@ -5,6 +5,8 @@
 //! All kernels use Destination Passing Style (DPS):
 //! - Output buffer is pre-allocated from Arena
 //! - Zero heap allocations in hot path
+//!
+//! Author: Moroya Sakamoto
 
 #[cfg(not(feature = "std"))]
 use alloc::{vec, vec::Vec};
@@ -19,19 +21,25 @@ use crate::Ternary;
 /// Packed ternary weights for a layer
 ///
 /// Weights are stored as 2-bit values packed into bytes.
-/// 4 weights per byte: [w0:2bit][w1:2bit][w2:2bit][w3:2bit]
+/// 4 weights per byte: `[w0:2bit][w1:2bit][w2:2bit][w3:2bit]`
 #[derive(Clone, Debug)]
 pub struct TernaryWeight {
+    /// Packed 2-bit ternary values (4 weights per byte)
     packed: Vec<u8>,
+    /// Number of output features (rows)
     out_features: usize,
+    /// Number of input features (columns)
     in_features: usize,
+    /// Scale factor applied after accumulation
     scale: f32,
 }
 
 impl TernaryWeight {
     /// Create from ternary values (-1, 0, +1)
     pub fn from_ternary(values: &[i8], out_features: usize, in_features: usize) -> Self {
-        assert_eq!(values.len(), out_features * in_features);
+        let total = out_features.checked_mul(in_features)
+            .expect("dimension overflow: out_features * in_features");
+        assert_eq!(values.len(), total);
 
         let packed_len = (values.len() + 3) / 4;
         let mut packed = vec![0u8; packed_len];
@@ -55,6 +63,15 @@ impl TernaryWeight {
 
     /// Create from packed bytes with scale
     pub fn from_packed(packed: Vec<u8>, out_features: usize, in_features: usize, scale: f32) -> Self {
+        let total = out_features.checked_mul(in_features)
+            .expect("dimension overflow: out_features * in_features");
+        let expected_packed = (total + 3) / 4;
+        debug_assert!(
+            packed.len() >= expected_packed,
+            "packed data too short: {} < {}",
+            packed.len(),
+            expected_packed
+        );
         Self { packed, out_features, in_features, scale }
     }
 
@@ -68,23 +85,32 @@ impl TernaryWeight {
         Ternary::from_bits(bits)
     }
 
+    /// Number of output features (rows)
     #[inline]
     pub fn out_features(&self) -> usize { self.out_features }
 
+    /// Number of input features (columns)
     #[inline]
     pub fn in_features(&self) -> usize { self.in_features }
 
+    /// Scale factor applied after accumulation
     #[inline]
     pub fn scale(&self) -> f32 { self.scale }
 
+    /// Raw packed bytes (4 ternary values per byte)
     #[inline]
     pub fn packed(&self) -> &[u8] { &self.packed }
 
+    /// Memory footprint of packed weights in bytes
     #[inline]
     pub fn memory_bytes(&self) -> usize { self.packed.len() }
 
+    /// Compression ratio vs FP32 (e.g. 16x for ternary)
     #[inline]
     pub fn compression_ratio(&self) -> f32 {
+        if self.packed.is_empty() {
+            return 0.0;
+        }
         let fp32_size = self.out_features * self.in_features * 4;
         fp32_size as f32 / self.packed.len() as f32
     }
@@ -102,11 +128,17 @@ impl TernaryWeight {
 /// 32 weights per u32, enabling true SIMD.
 #[derive(Clone, Debug)]
 pub struct TernaryWeightKernel {
+    /// Bitplane for +1 weights (1 bit per weight, 32 per u32)
     plus_bits: Vec<u32>,
+    /// Bitplane for -1 weights (1 bit per weight, 32 per u32)
     minus_bits: Vec<u32>,
+    /// Number of output features (rows)
     out_features: usize,
+    /// Number of input features (columns)
     in_features: usize,
+    /// Scale factor applied after accumulation
     scale: f32,
+    /// Number of u32 words per row: `(in_features + 31) / 32`
     words_per_row: usize,
 }
 
@@ -118,7 +150,9 @@ impl TernaryWeightKernel {
 
     /// Create with custom scale
     pub fn from_ternary_scaled(values: &[i8], out_features: usize, in_features: usize, scale: f32) -> Self {
-        assert_eq!(values.len(), out_features * in_features);
+        let total = out_features.checked_mul(in_features)
+            .expect("dimension overflow: out_features * in_features");
+        assert_eq!(values.len(), total);
 
         let words_per_row = (in_features + 31) / 32;
         let total_words = out_features * words_per_row;
@@ -177,32 +211,44 @@ impl TernaryWeightKernel {
         }
     }
 
+    /// Number of output features (rows)
     #[inline]
     pub fn out_features(&self) -> usize { self.out_features }
 
+    /// Number of input features (columns)
     #[inline]
     pub fn in_features(&self) -> usize { self.in_features }
 
+    /// Scale factor applied after accumulation
     #[inline]
     pub fn scale(&self) -> f32 { self.scale }
 
+    /// Memory footprint of bit-parallel weights in bytes
     #[inline]
     pub fn memory_bytes(&self) -> usize {
         (self.plus_bits.len() + self.minus_bits.len()) * 4
     }
 
+    /// Compression ratio vs FP32 (e.g. 8x for bit-parallel)
     #[inline]
     pub fn compression_ratio(&self) -> f32 {
+        let mem = self.memory_bytes();
+        if mem == 0 {
+            return 0.0;
+        }
         let fp32_size = self.out_features * self.in_features * 4;
-        fp32_size as f32 / self.memory_bytes() as f32
+        fp32_size as f32 / mem as f32
     }
 
+    /// Raw +1 bitplane (1 bit per weight, 32 per u32)
     #[inline]
     pub fn plus_bits(&self) -> &[u32] { &self.plus_bits }
 
+    /// Raw -1 bitplane (1 bit per weight, 32 per u32)
     #[inline]
     pub fn minus_bits(&self) -> &[u32] { &self.minus_bits }
 
+    /// Number of u32 words per row
     #[inline]
     pub fn words_per_row(&self) -> usize { self.words_per_row }
 }
@@ -268,14 +314,28 @@ pub fn ternary_matmul_batch(
     debug_assert_eq!(input.len(), batch_size * in_features);
     debug_assert_eq!(output.len(), batch_size * out_features);
 
-    for b in 0..batch_size {
-        let x_start = b * in_features;
-        let x_slice = &input[x_start..x_start + in_features];
+    #[cfg(feature = "parallel")]
+    {
+        use rayon::prelude::*;
+        output
+            .par_chunks_mut(out_features)
+            .zip(input.par_chunks(in_features))
+            .for_each(|(y_slice, x_slice)| {
+                ternary_matvec(x_slice, weights, y_slice);
+            });
+    }
 
-        let y_start = b * out_features;
-        let y_slice = &mut output[y_start..y_start + out_features];
+    #[cfg(not(feature = "parallel"))]
+    {
+        for b in 0..batch_size {
+            let x_start = b * in_features;
+            let x_slice = &input[x_start..x_start + in_features];
 
-        ternary_matvec(x_slice, weights, y_slice);
+            let y_start = b * out_features;
+            let y_slice = &mut output[y_start..y_start + out_features];
+
+            ternary_matvec(x_slice, weights, y_slice);
+        }
     }
 }
 
@@ -574,13 +634,13 @@ mod tests {
         let values = vec![1i8, -1, 0, 1, -1, 1, 0, -1];
         let w = TernaryWeight::from_ternary(&values, 2, 4);
 
-        assert_eq!(w.out_features(), 2);
-        assert_eq!(w.in_features(), 4);
+        assert_eq!(w.out_features(), 2, "out_features should be 2");
+        assert_eq!(w.in_features(), 4, "in_features should be 4");
 
-        assert_eq!(w.get(0, 0), Ternary::Plus);
-        assert_eq!(w.get(0, 1), Ternary::Minus);
-        assert_eq!(w.get(0, 2), Ternary::Zero);
-        assert_eq!(w.get(0, 3), Ternary::Plus);
+        assert_eq!(w.get(0, 0), Ternary::Plus, "w[0,0] should be +1");
+        assert_eq!(w.get(0, 1), Ternary::Minus, "w[0,1] should be -1");
+        assert_eq!(w.get(0, 2), Ternary::Zero, "w[0,2] should be 0");
+        assert_eq!(w.get(0, 3), Ternary::Plus, "w[0,3] should be +1");
     }
 
     #[test]
@@ -595,8 +655,8 @@ mod tests {
 
         ternary_matvec(&input, &weights, &mut output);
 
-        assert!((output[0] - (-1.0)).abs() < 1e-6);
-        assert!((output[1] - 3.0).abs() < 1e-6);
+        assert!((output[0] - (-1.0)).abs() < 1e-6, "y[0] = 2-3 = -1, got {}", output[0]);
+        assert!((output[1] - 3.0).abs() < 1e-6, "y[1] = 0+3 = 3, got {}", output[1]);
     }
 
     #[test]
@@ -607,7 +667,7 @@ mod tests {
 
         ternary_matvec(&input, &weights, &mut output);
 
-        assert!((output[0] - 10.0).abs() < 1e-6);
+        assert!((output[0] - 10.0).abs() < 1e-6, "all-plus sum should be 10, got {}", output[0]);
     }
 
     #[test]
@@ -618,7 +678,7 @@ mod tests {
 
         ternary_matvec(&input, &weights, &mut output);
 
-        assert!((output[0] - (-10.0)).abs() < 1e-6);
+        assert!((output[0] - (-10.0)).abs() < 1e-6, "all-minus sum should be -10, got {}", output[0]);
     }
 
     #[test]
@@ -629,10 +689,10 @@ mod tests {
 
         ternary_matmul_batch(&input, &weights, &mut output, 2);
 
-        assert!((output[0] - (-1.0)).abs() < 1e-6);  // 1-2
-        assert!((output[1] - 3.0).abs() < 1e-6);    // 1+2
-        assert!((output[2] - (-1.0)).abs() < 1e-6); // 3-4
-        assert!((output[3] - 7.0).abs() < 1e-6);   // 3+4
+        assert!((output[0] - (-1.0)).abs() < 1e-6, "batch0 out0: 1-2 = -1, got {}", output[0]);
+        assert!((output[1] - 3.0).abs() < 1e-6, "batch0 out1: 1+2 = 3, got {}", output[1]);
+        assert!((output[2] - (-1.0)).abs() < 1e-6, "batch1 out0: 3-4 = -1, got {}", output[2]);
+        assert!((output[3] - 7.0).abs() < 1e-6, "batch1 out1: 3+4 = 7, got {}", output[3]);
     }
 
     #[test]
@@ -643,8 +703,8 @@ mod tests {
 
         ternary_matvec_kernel(&input, &kernel, &mut output);
 
-        assert!((output[0] - (-1.0)).abs() < 1e-6);
-        assert!((output[1] - 3.0).abs() < 1e-6);
+        assert!((output[0] - (-1.0)).abs() < 1e-6, "kernel y[0] should be -1, got {}", output[0]);
+        assert!((output[1] - 3.0).abs() < 1e-6, "kernel y[1] should be 3, got {}", output[1]);
     }
 
     #[test]
@@ -655,8 +715,7 @@ mod tests {
 
         let kernel = TernaryWeightKernel::from_ternary(&values, 2, 64);
         ternary_matvec_kernel(&input, &kernel, &mut output);
-
-        // Just verify no panic
+        // Verify no panic on large dimension
     }
 
     #[test]
@@ -667,8 +726,8 @@ mod tests {
 
         ternary_matvec_kernel_quantized(&quantized, &kernel, &mut output);
 
-        assert!((output[0] - (-1.0)).abs() < 0.1);
-        assert!((output[1] - 3.0).abs() < 0.1);
+        assert!((output[0] - (-1.0)).abs() < 0.1, "quantized y[0] should be ~-1, got {}", output[0]);
+        assert!((output[1] - 3.0).abs() < 0.1, "quantized y[1] should be ~3, got {}", output[1]);
     }
 
     #[test]
@@ -686,7 +745,10 @@ mod tests {
         ternary_matvec_kernel(&input, &kernel, &mut out_kernel);
 
         for i in 0..3 {
-            assert!((out_packed[i] - out_kernel[i]).abs() < 1e-6);
+            assert!(
+                (out_packed[i] - out_kernel[i]).abs() < 1e-6,
+                "packed vs kernel mismatch at row {}: {} vs {}", i, out_packed[i], out_kernel[i]
+            );
         }
     }
 
@@ -694,7 +756,7 @@ mod tests {
     fn test_compression_ratio() {
         let weights = TernaryWeight::from_ternary(&vec![0i8; 1024 * 1024], 1024, 1024);
         let ratio = weights.compression_ratio();
-        assert!((ratio - 16.0).abs() < 0.1);
+        assert!((ratio - 16.0).abs() < 0.1, "1.58bit should compress 16x vs f32, got {:.1}x", ratio);
     }
 
     #[test]
@@ -704,15 +766,15 @@ mod tests {
         let plus = extract_plus_mask(byte);
         let minus = extract_minus_mask(byte);
 
-        assert_eq!(plus & 0b0001, 1);
-        assert_eq!(plus & 0b0010, 0);
-        assert_eq!(plus & 0b0100, 0);
-        assert_eq!(plus & 0b1000, 8);
+        assert_eq!(plus & 0b0001, 1, "plus mask bit 0 should be set");
+        assert_eq!(plus & 0b0010, 0, "plus mask bit 1 should be clear");
+        assert_eq!(plus & 0b0100, 0, "plus mask bit 2 should be clear");
+        assert_eq!(plus & 0b1000, 8, "plus mask bit 3 should be set");
 
-        assert_eq!(minus & 0b0001, 0);
-        assert_eq!(minus & 0b0010, 2);
-        assert_eq!(minus & 0b0100, 0);
-        assert_eq!(minus & 0b1000, 0);
+        assert_eq!(minus & 0b0001, 0, "minus mask bit 0 should be clear");
+        assert_eq!(minus & 0b0010, 2, "minus mask bit 1 should be set");
+        assert_eq!(minus & 0b0100, 0, "minus mask bit 2 should be clear");
+        assert_eq!(minus & 0b1000, 0, "minus mask bit 3 should be clear");
     }
 
     #[test]
@@ -726,8 +788,8 @@ mod tests {
         // Inference: ZERO ALLOCATION
         ternary_matvec(&input_data, &weights, &mut output_data);
 
-        // Verify: row 0 = [1,-1,1]·[1,2,3] = 1-2+3 = 2
-        assert!((output_data[0] - 2.0).abs() < 1e-6);
+        // row 0 = [1,-1,1]·[1,2,3] = 1-2+3 = 2
+        assert!((output_data[0] - 2.0).abs() < 1e-6, "row0 should be 2, got {}", output_data[0]);
     }
 
     #[test]
@@ -738,6 +800,6 @@ mod tests {
 
         ternary_matvec_kernel(&input, &kernel, &mut output);
 
-        assert!((output[0] - 5.0).abs() < 1e-6);  // 10 * 0.5
+        assert!((output[0] - 5.0).abs() < 1e-6, "10 * 0.5 = 5, got {}", output[0]);
     }
 }

@@ -1,6 +1,8 @@
 //! Arena Allocator for Zero-Allocation Inference
 //!
 //! Pre-allocates all memory upfront. No runtime allocations during inference.
+//!
+//! Author: Moroya Sakamoto
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -29,12 +31,12 @@ impl Arena {
     #[inline]
     pub fn alloc<T>(&mut self, count: usize) -> Option<&mut [T]> {
         let align = core::mem::align_of::<T>();
-        let size = core::mem::size_of::<T>() * count;
+        let size = core::mem::size_of::<T>().checked_mul(count)?;
 
         // Align offset
         let aligned_offset = (self.offset + align - 1) & !(align - 1);
 
-        if aligned_offset + size > self.buffer.len() {
+        if aligned_offset.checked_add(size)? > self.buffer.len() {
             return None;
         }
 
@@ -98,12 +100,12 @@ mod tests {
         let mut arena = Arena::new(1024);
 
         let floats = arena.alloc::<f32>(10).unwrap();
-        assert_eq!(floats.len(), 10);
+        assert_eq!(floats.len(), 10, "should allocate 10 floats");
 
         let ints = arena.alloc::<i32>(20).unwrap();
-        assert_eq!(ints.len(), 20);
+        assert_eq!(ints.len(), 20, "should allocate 20 ints");
 
-        assert!(arena.used() > 0);
+        assert!(arena.used() > 0, "arena should track usage");
     }
 
     #[test]
@@ -114,10 +116,10 @@ mod tests {
         let used_before = arena.used();
 
         arena.reset();
-        assert_eq!(arena.used(), 0);
+        assert_eq!(arena.used(), 0, "reset should clear usage");
 
         let _ = arena.alloc::<f32>(100).unwrap();
-        assert_eq!(arena.used(), used_before);
+        assert_eq!(arena.used(), used_before, "re-alloc should use same amount");
     }
 
     #[test]
@@ -128,7 +130,7 @@ mod tests {
         let _ = arena.alloc::<f32>(10).unwrap();
 
         // Should fail (not enough space)
-        assert!(arena.alloc::<f32>(100).is_none());
+        assert!(arena.alloc::<f32>(100).is_none(), "should return None when exhausted");
     }
 
     #[test]
@@ -141,6 +143,13 @@ mod tests {
         // Next allocation should still be aligned
         let floats = arena.alloc::<f32>(4).unwrap();
         let ptr = floats.as_ptr() as usize;
-        assert_eq!(ptr % core::mem::align_of::<f32>(), 0);
+        assert_eq!(ptr % core::mem::align_of::<f32>(), 0, "f32 allocation must be aligned");
+    }
+
+    #[test]
+    fn test_arena_overflow_protection() {
+        let mut arena = Arena::new(1024);
+        // Requesting usize::MAX elements should return None, not panic
+        assert!(arena.alloc::<f32>(usize::MAX).is_none(), "overflow should return None");
     }
 }

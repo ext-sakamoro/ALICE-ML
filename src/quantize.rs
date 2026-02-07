@@ -2,6 +2,8 @@
 //!
 //! Based on BitNet b1.58 research: weights can be quantized to 1.58 bits
 //! with minimal accuracy loss when using learned scaling factors.
+//!
+//! Author: Moroya Sakamoto
 
 #[cfg(not(feature = "std"))]
 use alloc::{vec, vec::Vec};
@@ -84,7 +86,16 @@ pub fn quantize_to_ternary(
     out_features: usize,
     in_features: usize,
 ) -> (TernaryWeight, QuantStats) {
-    assert_eq!(weights.len(), out_features * in_features);
+    let total = out_features.checked_mul(in_features)
+        .expect("dimension overflow: out_features * in_features");
+    assert_eq!(weights.len(), total);
+
+    if weights.is_empty() {
+        return (
+            TernaryWeight::from_ternary(&[], 0, 0),
+            QuantStats::default(),
+        );
+    }
 
     // Compute scale (mean absolute value)
     let inv_len = 1.0 / weights.len() as f32;
@@ -144,7 +155,16 @@ pub fn quantize_to_ternary_sparse(
     in_features: usize,
     threshold: f32,
 ) -> (TernaryWeight, QuantStats) {
-    assert_eq!(weights.len(), out_features * in_features);
+    let total = out_features.checked_mul(in_features)
+        .expect("dimension overflow: out_features * in_features");
+    assert_eq!(weights.len(), total);
+
+    if weights.is_empty() {
+        return (
+            TernaryWeight::from_ternary(&[], 0, 0),
+            QuantStats::default(),
+        );
+    }
 
     // Compute scale
     let inv_len = 1.0 / weights.len() as f32;
@@ -286,13 +306,13 @@ mod tests {
         let weights = vec![1.0f32, -1.0, 0.5, -0.5];
         let (tw, stats) = quantize_to_ternary(&weights, 1, 4);
 
-        assert_eq!(tw.out_features(), 1);
-        assert_eq!(tw.in_features(), 4);
-        assert!(stats.scale > 0.0);
+        assert_eq!(tw.out_features(), 1, "out_features should be 1");
+        assert_eq!(tw.in_features(), 4, "in_features should be 4");
+        assert!(stats.scale > 0.0, "scale should be positive");
 
         // Check that we have both plus and minus
-        assert!(stats.plus_count > 0);
-        assert!(stats.minus_count > 0);
+        assert!(stats.plus_count > 0, "should have +1 weights");
+        assert!(stats.minus_count > 0, "should have -1 weights");
     }
 
     #[test]
@@ -302,8 +322,8 @@ mod tests {
         let (_tw, stats) = quantize_to_ternary_sparse(&weights, 1, 6, 0.5);
 
         // Small weights should be zeroed
-        assert!(stats.zero_count > 0);
-        assert!(stats.sparsity() > 0.0);
+        assert!(stats.zero_count > 0, "sparse quantization should produce zeros");
+        assert!(stats.sparsity() > 0.0, "sparsity should be > 0");
     }
 
     #[test]
@@ -313,11 +333,11 @@ mod tests {
         let dequantized = dequantize_from_ternary(&tw);
 
         // Should have same sign pattern
-        for (o, d) in weights.iter().zip(dequantized.iter()) {
+        for (i, (o, d)) in weights.iter().zip(dequantized.iter()).enumerate() {
             if *o > 0.5 {
-                assert!(*d > 0.0);
+                assert!(*d > 0.0, "weight[{}] positive sign lost: {} -> {}", i, o, d);
             } else if *o < -0.5 {
-                assert!(*d < 0.0);
+                assert!(*d < 0.0, "weight[{}] negative sign lost: {} -> {}", i, o, d);
             }
         }
     }
@@ -333,7 +353,7 @@ mod tests {
         };
 
         let bits = stats.effective_bits();
-        assert!((bits - 1.58).abs() < 0.1);
+        assert!((bits - 1.58).abs() < 0.1, "equal ternary should be ~1.58 bits, got {:.2}", bits);
     }
 
     #[test]
@@ -343,9 +363,9 @@ mod tests {
         let error = compute_quantization_error(&original, &tw);
 
         // Error should be bounded
-        assert!(error.mae < 1.0);
-        assert!(error.rmse < 1.0);
-        assert!(error.snr > 0.0);
+        assert!(error.mae < 1.0, "MAE should be < 1.0, got {}", error.mae);
+        assert!(error.rmse < 1.0, "RMSE should be < 1.0, got {}", error.rmse);
+        assert!(error.snr > 0.0, "SNR should be positive, got {}", error.snr);
     }
 
     #[test]
@@ -357,6 +377,6 @@ mod tests {
         // FP32: 1000 * 4 = 4000 bytes
         // Ternary: 1000 / 4 = 250 bytes
         let compression = tw.compression_ratio();
-        assert!((compression - 16.0).abs() < 1.0);
+        assert!((compression - 16.0).abs() < 1.0, "should compress ~16x, got {:.1}x", compression);
     }
 }

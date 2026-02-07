@@ -79,6 +79,7 @@
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
 
+#![warn(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(not(feature = "std"))]
@@ -158,8 +159,11 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Ternary {
+    /// Zero weight (no contribution)
     Zero = 0b00,
+    /// Positive weight (+1: add input)
     Plus = 0b01,
+    /// Negative weight (-1: subtract input)
     Minus = 0b10,
 }
 

@@ -16,10 +16,11 @@ crate-type = ["rlib", "staticlib"]
 [features]
 default = ["std"]
 std = []
-simd = []  # Enable hand-tuned SIMD kernels
+simd = []       # Enable hand-tuned SIMD kernels
+parallel = ["dep:rayon"]  # Enable Rayon parallel batch processing
 
 [dependencies]
-# Zero dependencies for core functionality
+rayon = { version = "1.10", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
@@ -30,11 +31,14 @@ name = "matmul"
 harness = false
 
 [profile.release]
-lto = true
-codegen-units = 1
 opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
 panic = "abort"
 
 [profile.bench]
-lto = true
 opt-level = 3
+lto = "thin"
+debug = false
+codegen-units = 1

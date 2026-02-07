@@ -25,9 +25,11 @@ y = Σ(x[i] where W=+1) - Σ(x[i] where W=-1)  →  Additions only!
 - **1.58-bit Weights**: Ternary quantization {-1, 0, +1} stored as 2-bit packed
 - **No Multiplication**: Matrix operations use only add/sub
 - **16x Compression**: 4 bytes → 0.25 bytes per weight
-- **SIMD Ready**: AVX2/NEON kernels for parallel processing
+- **AVX2 SIMD**: 8-wide `_mm256` kernels for MatVec, add/sub/scale/ReLU
+- **Rayon Parallel**: Batch MatMul auto-parallelized with `--features parallel`
+- **Branchless ReLU**: `_mm256_max_ps` / `f32::max(0.0)` — zero branches in hot path
 - **Zero-Copy Loading**: mmap model files directly
-- **No Dependencies**: Pure Rust, zero external crates
+- **No Dependencies**: Pure Rust, zero external crates (rayon optional)
 - **no_std Compatible**: Runs on bare metal / WASM
 
 ## Quick Start
@@ -191,10 +193,53 @@ alice-physics = { path = "../ALICE-Physics", features = ["neural"] }
 alice-ml = { path = "../ALICE-ML" }
 ```
 
+## Cargo Features
+
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `std` | Yes | Standard library support |
+| `simd` | No | AVX2 8-wide SIMD kernels (tensor ops + ternary MatVec) |
+| `parallel` | No | Rayon parallel batch MatMul |
+
+```bash
+cargo build --release --features simd       # Enable SIMD kernels
+cargo build --release --features parallel   # Enable Rayon batch parallelism
+cargo build --release --features "simd,parallel"  # Both
+```
+
+## Optimizations
+
+### SIMD Kernels (`--features simd`)
+
+All tensor operations vectorized to process 8 floats per cycle:
+
+| Operation | Scalar | SIMD (AVX2) |
+|-----------|--------|-------------|
+| `tensor_add` | 1 add/cycle | `_mm256_add_ps` — 8 adds/cycle |
+| `tensor_sub` | 1 sub/cycle | `_mm256_sub_ps` — 8 subs/cycle |
+| `tensor_scale` | 1 mul/cycle | `_mm256_mul_ps` — 8 muls/cycle |
+| `tensor_relu` | branch + cmp | `_mm256_max_ps` — 8-wide branchless |
+| `ternary_matvec` | Packed 2-bit decode | `_mm256_blendv_ps` mask select |
+
+### Parallel Batch (`--features parallel`)
+
+Batch MatMul auto-parallelizes across samples via Rayon `par_chunks_mut`:
+
+```rust
+// Batch of 64 inputs × 1024 features → parallel across CPU cores
+ternary_matmul_batch(&inputs, &weights, &mut outputs, 64);
+```
+
+### Branchless Everything
+
+ReLU uses `f32::max(0.0)` which compiles to `maxss`/`maxps` — no branch prediction misses.
+
 ## Roadmap
 
 - [x] Fixed-point inference via ALICE-Physics integration (deterministic game AI)
-- [ ] AVX2/NEON SIMD kernels
+- [x] AVX2 SIMD kernels (tensor ops + ternary MatVec)
+- [x] Rayon parallel batch MatMul
+- [ ] NEON SIMD kernels (ARM)
 - [ ] BitLinear layer (drop-in nn.Linear replacement)
 - [ ] Knowledge distillation from PyTorch models
 - [ ] Early exit for dynamic depth
