@@ -140,9 +140,60 @@ println!("MAE: {}", stats.mae);
 2. **Energy Efficiency**: Eliminate power-hungry multipliers
 3. **Embedded AI**: no_std compatible for microcontrollers
 4. **Model Compression**: 16x smaller model files
+5. **Deterministic Game AI**: Bit-exact neural inference for networked games (via ALICE-Physics)
+
+## Integration with ALICE-Physics
+
+ALICE-ML's ternary weights are the key to **deterministic neural inference** in physics simulations. By combining ternary {-1, 0, +1} weights with [ALICE-Physics](../ALICE-Physics)' 128-bit fixed-point arithmetic, the entire inference pipeline reduces to pure addition/subtraction — guaranteeing bit-exact results across all platforms.
+
+### Why Ternary + Fixed-Point = Determinism
+
+```
+Traditional NN:   y = W · x  → FP32 multiply → platform-dependent rounding
+ALICE-ML + Fix128: y = Σ(±x)  → Fix128 add/sub → bit-exact everywhere
+```
+
+With ternary weights, there is no floating-point multiplication at all. The only multiply is a single scale factor (precomputed as Fix128 at model load time). This makes it the ideal inference engine for:
+
+- **Fighting games**: Frame-perfect rollback netcode with AI opponents
+- **Action games**: Ragdoll controllers that behave identically on all clients
+- **Competitive multiplayer**: Zero desync from AI-controlled entities
+
+### Usage
+
+```rust
+use alice_ml::{TernaryWeight, quantize_to_ternary};
+use alice_physics::neural::*;
+use alice_physics::Fix128;
+
+// Quantize your trained model
+let (weights, stats) = quantize_to_ternary(&fp32_weights, out_features, in_features);
+
+// Convert to fixed-point (deterministic from this point forward)
+let fixed_weights = FixedTernaryWeight::from_ternary_weight(weights);
+
+// Build network
+let mut network = DeterministicNetwork::new(
+    vec![fixed_weights],
+    vec![Activation::ReLU],
+);
+
+// Inference — bit-exact on every platform
+let input = vec![Fix128::from_int(1); in_features];
+let output = network.forward(&input);
+```
+
+### Requirements
+
+```toml
+[dependencies]
+alice-physics = { path = "../ALICE-Physics", features = ["neural"] }
+alice-ml = { path = "../ALICE-ML" }
+```
 
 ## Roadmap
 
+- [x] Fixed-point inference via ALICE-Physics integration (deterministic game AI)
 - [ ] AVX2/NEON SIMD kernels
 - [ ] BitLinear layer (drop-in nn.Linear replacement)
 - [ ] Knowledge distillation from PyTorch models
