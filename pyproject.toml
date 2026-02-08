@@ -1,0 +1,17 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "alice-ml"
+requires-python = ">=3.8"
+description = "1.58-bit Ternary Inference Engine — No multiplication, only addition"
+license = { text = "AGPL-3.0" }
+authors = [{ name = "Moroya Sakamoto" }]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[tool.maturin]
+features = ["pyo3"]
