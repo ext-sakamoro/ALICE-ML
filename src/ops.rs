@@ -277,16 +277,24 @@ pub fn ternary_matvec(input: &[f32], weights: &TernaryWeight, output: &mut [f32]
         let mut acc_plus = 0.0f32;
         let mut acc_minus = 0.0f32;
 
+        // Incremental byte/bit tracking eliminates /4 and %4 per iteration
+        let row_start = i * in_features;
+        let mut byte_idx = row_start >> 2;
+        let mut bit_offset = (row_start & 3) << 1;
+
         for col in 0..in_features {
-            let flat_idx = i * in_features + col;
-            let byte_idx = flat_idx / 4;
-            let bit_offset = (flat_idx % 4) * 2;
             let bits = (weights.packed()[byte_idx] >> bit_offset) & 0b11;
 
             match bits {
                 0b01 => acc_plus += input[col],
                 0b10 => acc_minus += input[col],
                 _ => {}
+            }
+
+            bit_offset += 2;
+            if bit_offset >= 8 {
+                bit_offset = 0;
+                byte_idx += 1;
             }
         }
 
