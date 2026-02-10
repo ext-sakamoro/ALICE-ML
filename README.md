@@ -236,6 +236,25 @@ ternary_matmul_batch(&inputs, &weights, &mut outputs, 64);
 
 ReLU uses `f32::max(0.0)` which compiles to `maxss`/`maxps` — no branch prediction misses.
 
+## Cross-Crate Bridges
+
+### DB Bridge (feature: `db`)
+
+Training metrics persistence via [ALICE-DB](../ALICE-DB). Records loss, accuracy, and sparsity per training step as time-series data for monitoring and checkpoint analysis.
+
+```toml
+[dependencies]
+alice-ml = { path = "../ALICE-ML", features = ["db"] }
+```
+
+```rust
+use alice_ml::db_bridge::TrainingMetricsSink;
+
+let sink = TrainingMetricsSink::open("./training_metrics")?;
+sink.record_step(step, loss, accuracy, sparsity)?;
+let losses = sink.query_loss(0, 1000)?;
+```
+
 ## Roadmap
 
 - [x] Fixed-point inference via ALICE-Physics integration (deterministic game AI)
