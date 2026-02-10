@@ -19,11 +19,13 @@ std = []
 simd = []       # Enable hand-tuned SIMD kernels
 parallel = ["dep:rayon"]  # Enable Rayon parallel batch processing
 pyo3 = ["dep:pyo3", "dep:numpy", "std"]  # Python bindings
+db = ["dep:alice-db", "std"]  # ALICE-DB training metrics persistence
 
 [dependencies]
 rayon = { version = "1.10", optional = true }
 pyo3 = { version = "0.27", features = ["extension-module"], optional = true }
 numpy = { version = "0.27", optional = true }
+alice-db = { path = "../ALICE-DB", optional = true, default-features = false }
 
 [dev-dependencies]
 criterion = "0.5"

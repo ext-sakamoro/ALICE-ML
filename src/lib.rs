@@ -90,6 +90,9 @@ pub mod ops;
 pub mod quantize;
 pub mod arena;
 
+#[cfg(feature = "db")]
+pub mod db_bridge;
+
 #[cfg(feature = "pyo3")]
 pub mod python;
 
