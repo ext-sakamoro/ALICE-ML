@@ -89,6 +89,10 @@ pub mod tensor;
 pub mod ops;
 pub mod quantize;
 pub mod arena;
+pub mod error_analysis;
+
+#[cfg(all(target_arch = "aarch64", feature = "neon"))]
+pub mod neon;
 
 #[cfg(feature = "db")]
 pub mod db_bridge;
@@ -144,6 +148,9 @@ pub use ops::{
     ternary_matmul_alloc,
 };
 
+// Cross-platform SIMD dispatch
+pub use ops::ternary_matvec_simd_dispatch;
+
 // Quantization
 pub use quantize::{
     quantize_to_ternary,
@@ -152,6 +159,15 @@ pub use quantize::{
     QuantStats,
     QuantizationError,
     compute_quantization_error,
+};
+
+// Cumulative quantization error analysis
+pub use error_analysis::{
+    LayerConfig,
+    CumulativeQuantError,
+    LayerErrorStats,
+    NetworkErrorReport,
+    compute_layer_error_propagation,
 };
 
 // ============================================================================

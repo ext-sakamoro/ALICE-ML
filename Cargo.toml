@@ -8,6 +8,7 @@ license = "AGPL-3.0"
 repository = "https://github.com/ext-sakamoro/ALICE-ML"
 keywords = ["machine-learning", "inference", "quantization", "bitnet", "simd"]
 categories = ["science", "no-std"]
+publish = false
 
 [lib]
 name = "alice_ml"
@@ -16,7 +17,8 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 [features]
 default = ["std"]
 std = []
-simd = []       # Enable hand-tuned SIMD kernels
+simd = []       # Enable hand-tuned SIMD kernels (AVX2 on x86_64)
+neon = []       # Enable hand-tuned NEON kernels (ARM aarch64)
 parallel = ["dep:rayon"]  # Enable Rayon parallel batch processing
 pyo3 = ["dep:pyo3", "dep:numpy", "std"]  # Python bindings
 db = ["dep:alice-db", "std"]  # ALICE-DB training metrics persistence
