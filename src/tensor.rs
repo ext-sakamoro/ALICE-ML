@@ -195,6 +195,9 @@ pub fn tensor_scale(a: &Tensor, scalar: f32, out: &mut Tensor) {
         let n = a.data.len();
         let chunks = n / 8;
         let remainder = n % 8;
+        // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
+        // Each load/store accesses exactly 8 consecutive f32 values (32 bytes) within the
+        // slice bounds: offset + 8 <= chunks * 8 <= n = a.data.len().
         unsafe {
             let s = _mm256_set1_ps(scalar);
             for i in 0..chunks {
@@ -228,6 +231,9 @@ pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
         let n = a.data.len();
         let chunks = n / 8;
         let remainder = n % 8;
+        // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
+        // Each load/store accesses exactly 8 consecutive f32 values within slice bounds:
+        // offset + 8 <= chunks * 8 <= n = a.data.len() = out.data.len().
         unsafe {
             let zero = _mm256_setzero_ps();
             for i in 0..chunks {
@@ -259,6 +265,9 @@ pub fn tensor_relu_inplace(a: &mut Tensor) {
         let n = a.data.len();
         let chunks = n / 8;
         let remainder = n % 8;
+        // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
+        // The load reads from a.data and the store writes back to the same slice at the same
+        // offset; they do not overlap within the same iteration. offset + 8 <= chunks * 8 <= n.
         unsafe {
             let zero = _mm256_setzero_ps();
             for i in 0..chunks {
@@ -358,6 +367,9 @@ fn simd_add_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
     use core::arch::x86_64::*;
     let n = a.len();
     let chunks = n / 8;
+    // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
+    // Each load/store accesses exactly 8 consecutive f32 values within respective slice bounds:
+    // offset + 8 <= chunks * 8 <= n = a.len() = b.len() = out.len().
     unsafe {
         for i in 0..chunks {
             let offset = i * 8;
@@ -379,6 +391,9 @@ fn simd_sub_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
     use core::arch::x86_64::*;
     let n = a.len();
     let chunks = n / 8;
+    // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
+    // Each load/store accesses exactly 8 consecutive f32 values within respective slice bounds:
+    // offset + 8 <= chunks * 8 <= n = a.len() = b.len() = out.len().
     unsafe {
         for i in 0..chunks {
             let offset = i * 8;

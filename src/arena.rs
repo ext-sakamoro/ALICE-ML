@@ -40,12 +40,18 @@ impl Arena {
             return None;
         }
 
+        // SAFETY: aligned_offset is within buffer bounds (checked above). The pointer arithmetic
+        // stays within the allocated Vec<u8> region. The cast to *mut T is valid because
+        // aligned_offset satisfies T's alignment requirement (computed via align_of::<T>()).
         let ptr = unsafe {
             self.buffer.as_mut_ptr().add(aligned_offset) as *mut T
         };
 
         self.offset = aligned_offset + size;
 
+        // SAFETY: ptr points to `count` consecutive T-sized slots within the arena buffer.
+        // The memory is valid for the arena's lifetime. No other reference aliases this region
+        // because the offset is advanced past it before returning.
         Some(unsafe { core::slice::from_raw_parts_mut(ptr, count) })
     }
 
