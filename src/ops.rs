@@ -617,9 +617,12 @@ pub mod simd {
 /// calls are a single relaxed load — no CPUID instruction, no branch misprediction.
 ///
 /// Values: 0 = unknown, 1 = not available, 2 = available.
+///
+/// This function is `pub(crate)` so that `tensor.rs` and other sibling modules
+/// can share the same cached detection without duplicating the AtomicU8.
 #[cfg(all(target_arch = "x86_64", feature = "simd", feature = "std"))]
 #[inline]
-fn has_avx2() -> bool {
+pub(crate) fn has_avx2() -> bool {
     use std::sync::atomic::{AtomicU8, Ordering};
     static CACHED: AtomicU8 = AtomicU8::new(0); // 0=unknown, 1=no, 2=yes
     match CACHED.load(Ordering::Relaxed) {
@@ -639,7 +642,7 @@ fn has_avx2() -> bool {
 /// caching requires `std::sync::atomic` which is not available there.
 #[cfg(all(target_arch = "x86_64", feature = "simd", not(feature = "std")))]
 #[inline]
-fn has_avx2() -> bool {
+pub(crate) fn has_avx2() -> bool {
     is_x86_feature_detected!("avx2")
 }
 

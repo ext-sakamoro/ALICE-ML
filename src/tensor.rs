@@ -155,14 +155,13 @@ pub fn tensor_add(a: &Tensor, b: &Tensor, out: &mut Tensor) {
     debug_assert_eq!(a.shape(), out.shape());
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
-    {
+    if crate::ops::has_avx2() {
         simd_add_f32(a.data, b.data, out.data);
+        return;
     }
-    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
-    {
-        for ((o, &av), &bv) in out.data.iter_mut().zip(a.data.iter()).zip(b.data.iter()) {
-            *o = av + bv;
-        }
+
+    for ((o, &av), &bv) in out.data.iter_mut().zip(a.data.iter()).zip(b.data.iter()) {
+        *o = av + bv;
     }
 }
 
@@ -173,14 +172,13 @@ pub fn tensor_sub(a: &Tensor, b: &Tensor, out: &mut Tensor) {
     debug_assert_eq!(a.shape(), out.shape());
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
-    {
+    if crate::ops::has_avx2() {
         simd_sub_f32(a.data, b.data, out.data);
+        return;
     }
-    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
-    {
-        for ((o, &av), &bv) in out.data.iter_mut().zip(a.data.iter()).zip(b.data.iter()) {
-            *o = av - bv;
-        }
+
+    for ((o, &av), &bv) in out.data.iter_mut().zip(a.data.iter()).zip(b.data.iter()) {
+        *o = av - bv;
     }
 }
 
@@ -190,14 +188,14 @@ pub fn tensor_scale(a: &Tensor, scalar: f32, out: &mut Tensor) {
     debug_assert_eq!(a.shape(), out.shape());
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
-    {
+    if crate::ops::has_avx2() {
         use core::arch::x86_64::*;
         let n = a.data.len();
         let chunks = n / 8;
         let remainder = n % 8;
-        // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
-        // Each load/store accesses exactly 8 consecutive f32 values (32 bytes) within the
-        // slice bounds: offset + 8 <= chunks * 8 <= n = a.data.len().
+        // SAFETY: AVX2 runtime detection via has_avx2() guarantees the CPU supports
+        // these intrinsics. Each load/store accesses exactly 8 consecutive f32 values
+        // (32 bytes) within slice bounds: offset + 8 <= chunks * 8 <= n = a.data.len().
         unsafe {
             let s = _mm256_set1_ps(scalar);
             for i in 0..chunks {
@@ -211,12 +209,11 @@ pub fn tensor_scale(a: &Tensor, scalar: f32, out: &mut Tensor) {
         for i in 0..remainder {
             out.data[tail + i] = a.data[tail + i] * scalar;
         }
+        return;
     }
-    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
-    {
-        for (o, &av) in out.data.iter_mut().zip(a.data.iter()) {
-            *o = av * scalar;
-        }
+
+    for (o, &av) in out.data.iter_mut().zip(a.data.iter()) {
+        *o = av * scalar;
     }
 }
 
@@ -226,14 +223,14 @@ pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
     debug_assert_eq!(a.shape(), out.shape());
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
-    {
+    if crate::ops::has_avx2() {
         use core::arch::x86_64::*;
         let n = a.data.len();
         let chunks = n / 8;
         let remainder = n % 8;
-        // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
-        // Each load/store accesses exactly 8 consecutive f32 values within slice bounds:
-        // offset + 8 <= chunks * 8 <= n = a.data.len() = out.data.len().
+        // SAFETY: AVX2 runtime detection via has_avx2() guarantees the CPU supports
+        // these intrinsics. Each load/store accesses exactly 8 consecutive f32 values
+        // within slice bounds: offset + 8 <= chunks * 8 <= n = a.data.len() = out.data.len().
         unsafe {
             let zero = _mm256_setzero_ps();
             for i in 0..chunks {
@@ -247,12 +244,11 @@ pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
         for i in 0..remainder {
             out.data[tail + i] = a.data[tail + i].max(0.0);
         }
+        return;
     }
-    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
-    {
-        for (o, &av) in out.data.iter_mut().zip(a.data.iter()) {
-            *o = av.max(0.0); // branchless: compiles to maxss/maxps
-        }
+
+    for (o, &av) in out.data.iter_mut().zip(a.data.iter()) {
+        *o = av.max(0.0); // branchless: compiles to maxss/maxps
     }
 }
 
@@ -260,14 +256,15 @@ pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
 #[inline]
 pub fn tensor_relu_inplace(a: &mut Tensor) {
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
-    {
+    if crate::ops::has_avx2() {
         use core::arch::x86_64::*;
         let n = a.data.len();
         let chunks = n / 8;
         let remainder = n % 8;
-        // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
-        // The load reads from a.data and the store writes back to the same slice at the same
-        // offset; they do not overlap within the same iteration. offset + 8 <= chunks * 8 <= n.
+        // SAFETY: AVX2 runtime detection via has_avx2() guarantees the CPU supports
+        // these intrinsics. The load reads from a.data and the store writes back to the
+        // same slice at the same offset; they do not overlap within the same iteration.
+        // offset + 8 <= chunks * 8 <= n.
         unsafe {
             let zero = _mm256_setzero_ps();
             for i in 0..chunks {
@@ -281,12 +278,11 @@ pub fn tensor_relu_inplace(a: &mut Tensor) {
         for i in 0..remainder {
             a.data[tail + i] = a.data[tail + i].max(0.0);
         }
+        return;
     }
-    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
-    {
-        for x in a.data.iter_mut() {
-            *x = x.max(0.0); // branchless: compiles to maxss
-        }
+
+    for x in a.data.iter_mut() {
+        *x = x.max(0.0); // branchless: compiles to maxss
     }
 }
 
@@ -332,18 +328,17 @@ pub fn tensor_softmax(a: &Tensor, out: &mut Tensor) {
 
 /// Sum all elements
 ///
-/// Uses an AVX2 8-wide horizontal reduction when the `simd` feature is enabled,
-/// falling back to a scalar accumulation for the tail and on non-x86 targets.
+/// Uses an AVX2 8-wide horizontal reduction when the `simd` feature is enabled
+/// and AVX2 is available at runtime, falling back to a scalar accumulation
+/// for the tail and on non-AVX2 / non-x86 targets.
 #[inline]
 pub fn tensor_sum(a: &Tensor) -> f32 {
-    #[allow(unused_variables)]
-    let len = a.data.len();
-
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
-    {
+    if crate::ops::has_avx2() {
         use core::arch::x86_64::*;
+        let len = a.data.len();
         let chunks = len / 8;
-        // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
+        // SAFETY: AVX2 availability confirmed at runtime via has_avx2().
         // Each load reads exactly 8 consecutive f32 values within a.data bounds:
         // i * 8 + 8 <= chunks * 8 <= len = a.data.len().
         unsafe {
@@ -367,10 +362,7 @@ pub fn tensor_sum(a: &Tensor) -> f32 {
         }
     }
 
-    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
-    {
-        a.data.iter().sum()
-    }
+    a.data.iter().sum()
 }
 
 /// Mean of all elements
@@ -382,7 +374,8 @@ pub fn tensor_mean(a: &Tensor) -> f32 {
 /// Maximum element
 ///
 /// Uses an AVX2 8-wide `_mm256_max_ps` reduction when the `simd` feature is
-/// enabled, falling back to a scalar fold on non-x86 targets or for the tail.
+/// enabled and AVX2 is available at runtime, falling back to a scalar fold
+/// on non-AVX2 / non-x86 targets or for the tail.
 #[inline]
 pub fn tensor_max(a: &Tensor) -> f32 {
     let len = a.data.len();
@@ -391,10 +384,10 @@ pub fn tensor_max(a: &Tensor) -> f32 {
     }
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
-    {
+    if crate::ops::has_avx2() {
         use core::arch::x86_64::*;
         let chunks = len / 8;
-        // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
+        // SAFETY: AVX2 availability confirmed at runtime via has_avx2().
         // Each load reads exactly 8 consecutive f32 values within a.data bounds:
         // i * 8 + 8 <= chunks * 8 <= len = a.data.len().
         unsafe {
@@ -418,16 +411,14 @@ pub fn tensor_max(a: &Tensor) -> f32 {
         }
     }
 
-    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
-    {
-        a.data.iter().cloned().fold(f32::NEG_INFINITY, f32::max)
-    }
+    a.data.iter().cloned().fold(f32::NEG_INFINITY, f32::max)
 }
 
 /// Minimum element
 ///
 /// Uses an AVX2 8-wide `_mm256_min_ps` reduction when the `simd` feature is
-/// enabled, falling back to a scalar fold on non-x86 targets or for the tail.
+/// enabled and AVX2 is available at runtime, falling back to a scalar fold
+/// on non-AVX2 / non-x86 targets or for the tail.
 #[inline]
 pub fn tensor_min(a: &Tensor) -> f32 {
     let len = a.data.len();
@@ -436,10 +427,10 @@ pub fn tensor_min(a: &Tensor) -> f32 {
     }
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
-    {
+    if crate::ops::has_avx2() {
         use core::arch::x86_64::*;
         let chunks = len / 8;
-        // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
+        // SAFETY: AVX2 availability confirmed at runtime via has_avx2().
         // Each load reads exactly 8 consecutive f32 values within a.data bounds:
         // i * 8 + 8 <= chunks * 8 <= len = a.data.len().
         unsafe {
@@ -463,10 +454,7 @@ pub fn tensor_min(a: &Tensor) -> f32 {
         }
     }
 
-    #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
-    {
-        a.data.iter().cloned().fold(f32::INFINITY, f32::min)
-    }
+    a.data.iter().cloned().fold(f32::INFINITY, f32::min)
 }
 
 /// Copy data from source to destination
