@@ -32,6 +32,7 @@ alice-db = { path = "../ALICE-DB", optional = true, default-features = false }
 [dev-dependencies]
 criterion = "0.5"
 rand = "0.8"
+tempfile = "3"
 
 [[bench]]
 name = "matmul"

@@ -460,7 +460,9 @@ fn dequantize<'py>(
     py: Python<'py>,
     weights: &PyTernaryWeight,
 ) -> Bound<'py, PyArray1<f32>> {
-    dequantize_from_ternary(&weights.inner).into_pyarray(py)
+    let inner = &weights.inner;
+    let result = py.detach(|| dequantize_from_ternary(inner));
+    result.into_pyarray(py)
 }
 
 /// Compute quantization error metrics.

@@ -90,6 +90,7 @@ pub mod ops;
 pub mod quantize;
 pub mod arena;
 pub mod error_analysis;
+pub mod layer;
 
 #[cfg(all(target_arch = "aarch64", feature = "neon"))]
 pub mod neon;
@@ -120,13 +121,23 @@ pub use tensor::{
     tensor_scale,
     tensor_relu,
     tensor_relu_inplace,
+    tensor_gelu,
+    tensor_gelu_inplace,
+    tensor_silu,
+    tensor_silu_inplace,
+    tensor_rms_norm,
+    tensor_layer_norm,
     tensor_softmax,
+    tensor_softmax_fast,
     tensor_sum,
     tensor_mean,
     tensor_max,
     tensor_min,
     tensor_copy,
 };
+
+// Layer abstractions
+pub use layer::BitLinear;
 
 // Weight types
 pub use ops::{

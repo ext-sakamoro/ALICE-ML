@@ -66,7 +66,7 @@ impl TernaryWeight {
         let total = out_features.checked_mul(in_features)
             .expect("dimension overflow: out_features * in_features");
         let expected_packed = (total + 3) / 4;
-        debug_assert!(
+        assert!(
             packed.len() >= expected_packed,
             "packed data too short: {} < {}",
             packed.len(),
@@ -126,6 +126,10 @@ impl TernaryWeight {
 ///
 /// Separate bitplanes for +1 and -1 weights.
 /// 32 weights per u32, enabling true SIMD.
+///
+/// Cache-line aligned (64 bytes) so the hot fields land in a single L1 cache
+/// line, eliminating cross-line fetches during tight inference loops.
+#[repr(C, align(64))]
 #[derive(Clone, Debug)]
 pub struct TernaryWeightKernel {
     /// Bitplane for +1 weights (1 bit per weight, 32 per u32)
@@ -451,7 +455,7 @@ pub fn ternary_matmul_alloc(input: &Tensor, weights: &TernaryWeight) -> crate::t
     let (batch_size, in_features) = if shape.len() == 2 {
         (shape[0], shape[1])
     } else {
-        (1, shape[0])
+        panic!("ternary_matmul_alloc: only 1D and 2D inputs are supported, got ndim={}", input.ndim());
     };
 
     assert_eq!(in_features, weights.in_features());
@@ -595,11 +599,80 @@ pub mod simd {
         weights: &TernaryWeightKernel,
         output: &mut [f32],
     ) {
-        if is_x86_feature_detected!("avx2") {
+        if has_avx2() {
             unsafe { ternary_matvec_avx2(input, weights, output) }
         } else {
             super::ternary_matvec_kernel(input, weights, output)
         }
+    }
+}
+
+// ============================================================================
+// Cached AVX2 detection (amortize is_x86_feature_detected! overhead)
+// ============================================================================
+
+/// Returns `true` if AVX2 is available on the current CPU.
+///
+/// The result is cached in an `AtomicU8` after the first call, so subsequent
+/// calls are a single relaxed load — no CPUID instruction, no branch misprediction.
+///
+/// Values: 0 = unknown, 1 = not available, 2 = available.
+#[cfg(all(target_arch = "x86_64", feature = "simd", feature = "std"))]
+#[inline]
+fn has_avx2() -> bool {
+    use std::sync::atomic::{AtomicU8, Ordering};
+    static CACHED: AtomicU8 = AtomicU8::new(0); // 0=unknown, 1=no, 2=yes
+    match CACHED.load(Ordering::Relaxed) {
+        2 => true,
+        1 => false,
+        _ => {
+            let result = is_x86_feature_detected!("avx2");
+            CACHED.store(if result { 2 } else { 1 }, Ordering::Relaxed);
+            result
+        }
+    }
+}
+
+/// Fallback when `std` is not available: always probe via `is_x86_feature_detected!`.
+///
+/// In `no_std` environments this macro resolves to an `__cpuidex` call;
+/// caching requires `std::sync::atomic` which is not available there.
+#[cfg(all(target_arch = "x86_64", feature = "simd", not(feature = "std")))]
+#[inline]
+fn has_avx2() -> bool {
+    is_x86_feature_detected!("avx2")
+}
+
+// ============================================================================
+// Cross-platform SIMD dispatch
+// ============================================================================
+
+/// Dispatch to the best available SIMD kernel for the current platform.
+///
+/// - x86_64 + AVX2: 8-wide SIMD
+/// - aarch64 + NEON: 4-wide SIMD
+/// - Fallback: scalar kernel
+#[inline]
+pub fn ternary_matvec_simd_dispatch(
+    input: &[f32],
+    weights: &TernaryWeightKernel,
+    output: &mut [f32],
+) {
+    #[cfg(all(target_arch = "x86_64", feature = "simd"))]
+    {
+        simd::ternary_matvec_dispatch(input, weights, output);
+        return;
+    }
+
+    #[cfg(all(target_arch = "aarch64", feature = "neon"))]
+    {
+        crate::neon::ternary_matvec_dispatch(input, weights, output);
+        return;
+    }
+
+    #[allow(unreachable_code)]
+    {
+        ternary_matvec_kernel(input, weights, output);
     }
 }
 
@@ -809,5 +882,58 @@ mod tests {
         ternary_matvec_kernel(&input, &kernel, &mut output);
 
         assert!((output[0] - 5.0).abs() < 1e-6, "10 * 0.5 = 5, got {}", output[0]);
+    }
+
+    // ============================================================================
+    // カリカリ enhancement tests
+    // ============================================================================
+
+    /// has_avx2() must be idempotent: calling it multiple times returns the same value
+    /// and the cache stores the result on the first call.
+    #[test]
+    #[cfg(all(target_arch = "x86_64", feature = "simd"))]
+    fn test_has_avx2_idempotent() {
+        let first = has_avx2();
+        let second = has_avx2();
+        let third = has_avx2();
+        assert_eq!(first, second, "has_avx2() must return consistent results");
+        assert_eq!(second, third, "has_avx2() must return consistent results");
+    }
+
+    /// TernaryWeightKernel must be 64-byte aligned.
+    #[test]
+    fn test_ternary_weight_kernel_alignment() {
+        let kernel = TernaryWeightKernel::from_ternary(&[1, -1, 0, 1], 2, 2);
+        let ptr = &kernel as *const TernaryWeightKernel as usize;
+        assert_eq!(
+            ptr % 64, 0,
+            "TernaryWeightKernel must be 64-byte (cache-line) aligned, ptr=0x{:x}", ptr
+        );
+    }
+
+    /// simd_dispatch must produce identical results to the scalar kernel.
+    #[test]
+    fn test_simd_dispatch_matches_scalar() {
+        // Use a dimension > 32 to exercise multiple SIMD words and the remainder path
+        let n_in = 40;
+        let n_out = 3;
+        let values: Vec<i8> = (0..n_in * n_out).map(|i| (i as i8 % 3) - 1).collect();
+        let input: Vec<f32> = (0..n_in).map(|i| (i as f32) * 0.1 - 2.0).collect();
+
+        let kernel = TernaryWeightKernel::from_ternary(&values, n_out, n_in);
+
+        let mut out_scalar = vec![0.0f32; n_out];
+        let mut out_dispatch = vec![0.0f32; n_out];
+
+        ternary_matvec_kernel(&input, &kernel, &mut out_scalar);
+        ternary_matvec_simd_dispatch(&input, &kernel, &mut out_dispatch);
+
+        for i in 0..n_out {
+            assert!(
+                (out_scalar[i] - out_dispatch[i]).abs() < 1e-4,
+                "simd_dispatch mismatch at row {}: scalar={} dispatch={}",
+                i, out_scalar[i], out_dispatch[i]
+            );
+        }
     }
 }
