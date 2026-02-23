@@ -52,6 +52,19 @@ unsafe fn hsum_neon(v: float32x4_t) -> f32 {
 /// Processes 4 floats at a time with branchless mask operations.
 /// Designed for ARM Cortex-A76 (Pi 5) NEON 128-bit SIMD.
 #[cfg(target_arch = "aarch64")]
+/// Ternary matrix-vector multiply using NEON SIMD (aarch64).
+///
+/// Computes `output[row] = scale * (sum_plus - sum_minus)` for each row,
+/// where `sum_plus` / `sum_minus` accumulate input elements selected by the
+/// ternary weight masks (+1 / -1 / 0).
+///
+/// # Safety
+///
+/// Caller must guarantee:
+/// - `input.len() >= weights.in_features()`
+/// - `output.len() >= weights.out_features()`
+/// - `weights.plus_bits().len() >= weights.out_features() * weights.words_per_row()`
+/// - `weights.minus_bits().len() >= weights.out_features() * weights.words_per_row()`
 pub unsafe fn ternary_matvec_neon(
     input: &[f32],
     weights: &TernaryWeightKernel,
@@ -76,6 +89,8 @@ pub unsafe fn ternary_matvec_neon(
             let word_idx = col / 32;
             let bit_offset = col % 32;
 
+            // SAFETY: row < output.len() <= out_features, words_per_row == ceil(in_features/32),
+            // and col/32 < words_per_row, so row_offset + word_idx < plus_bits.len().
             let plus_word = *weights.plus_bits().get_unchecked(row_offset + word_idx);
             let minus_word = *weights.minus_bits().get_unchecked(row_offset + word_idx);
 
@@ -104,12 +119,15 @@ pub unsafe fn ternary_matvec_neon(
         while col < in_features {
             let word_idx = col / 32;
             let bit_pos = col % 32;
+            // SAFETY: same invariant as NEON loop — row_offset + word_idx < plus_bits.len().
             let plus_word = *weights.plus_bits().get_unchecked(row_offset + word_idx);
             let minus_word = *weights.minus_bits().get_unchecked(row_offset + word_idx);
 
             if (plus_word >> bit_pos) & 1 != 0 {
+                // SAFETY: col < in_features <= input.len() (caller invariant).
                 sum_plus += *input.get_unchecked(col);
             } else if (minus_word >> bit_pos) & 1 != 0 {
+                // SAFETY: col < in_features <= input.len() (caller invariant).
                 sum_minus += *input.get_unchecked(col);
             }
             col += 1;
