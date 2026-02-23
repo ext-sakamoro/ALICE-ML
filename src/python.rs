@@ -6,12 +6,12 @@
 //! - Zero-Copy NumPy: No data copying across FFI boundary
 //! - Batch API: Push loops into Rust (SIMD + Rayon)
 
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
 use numpy::ndarray::Array2;
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 
-use crate::ops::{ternary_matvec, ternary_matmul_batch, ternary_matvec_kernel};
+use crate::ops::{ternary_matmul_batch, ternary_matvec, ternary_matvec_kernel};
 use crate::ops::{TernaryWeight, TernaryWeightKernel};
 use crate::quantize::{
     compute_quantization_error, dequantize_from_ternary, quantize_to_ternary,
@@ -32,8 +32,14 @@ pub struct PyTernaryWeight {
 impl PyTernaryWeight {
     /// Create from ternary values (-1, 0, +1) as int8 numpy array.
     #[new]
-    fn new(values: PyReadonlyArray1<'_, i8>, out_features: usize, in_features: usize) -> PyResult<Self> {
-        let slice = values.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    fn new(
+        values: PyReadonlyArray1<'_, i8>,
+        out_features: usize,
+        in_features: usize,
+    ) -> PyResult<Self> {
+        let slice = values
+            .as_slice()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
         if slice.len() != out_features * in_features {
             return Err(PyValueError::new_err(format!(
                 "values length {} != out_features({}) * in_features({})",
@@ -49,12 +55,7 @@ impl PyTernaryWeight {
 
     /// Create from pre-packed bytes with scale factor.
     #[staticmethod]
-    fn from_packed(
-        packed: Vec<u8>,
-        out_features: usize,
-        in_features: usize,
-        scale: f32,
-    ) -> Self {
+    fn from_packed(packed: Vec<u8>, out_features: usize, in_features: usize, scale: f32) -> Self {
         Self {
             inner: TernaryWeight::from_packed(packed, out_features, in_features, scale),
         }
@@ -94,7 +95,9 @@ impl PyTernaryWeight {
         py: Python<'py>,
         input: PyReadonlyArray1<'py, f32>,
     ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-        let input_slice = input.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let input_slice = input
+            .as_slice()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
         if input_slice.len() != self.inner.in_features() {
             return Err(PyValueError::new_err(format!(
                 "input length {} != in_features {}",
@@ -137,7 +140,9 @@ impl PyTernaryWeight {
             )));
         }
 
-        let input_slice = input.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let input_slice = input
+            .as_slice()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
         let out_features = self.inner.out_features();
         let weights = &self.inner;
 
@@ -178,8 +183,14 @@ pub struct PyTernaryWeightKernel {
 impl PyTernaryWeightKernel {
     /// Create from ternary values (-1, 0, +1).
     #[new]
-    fn new(values: PyReadonlyArray1<'_, i8>, out_features: usize, in_features: usize) -> PyResult<Self> {
-        let slice = values.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    fn new(
+        values: PyReadonlyArray1<'_, i8>,
+        out_features: usize,
+        in_features: usize,
+    ) -> PyResult<Self> {
+        let slice = values
+            .as_slice()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(Self {
             inner: TernaryWeightKernel::from_ternary(slice, out_features, in_features),
         })
@@ -214,7 +225,9 @@ impl PyTernaryWeightKernel {
         py: Python<'py>,
         input: PyReadonlyArray1<'py, f32>,
     ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-        let input_slice = input.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let input_slice = input
+            .as_slice()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
         if input_slice.len() != self.inner.in_features() {
             return Err(PyValueError::new_err(format!(
                 "input length {} != in_features {}",
@@ -306,13 +319,20 @@ fn add<'py>(
     a: PyReadonlyArray1<'py, f32>,
     b: PyReadonlyArray1<'py, f32>,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let sa = a.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let sb = b.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let sa = a
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let sb = b
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     if sa.len() != sb.len() {
         return Err(PyValueError::new_err("array length mismatch"));
     }
     let result = py.detach(|| {
-        sa.iter().zip(sb.iter()).map(|(x, y)| x + y).collect::<Vec<f32>>()
+        sa.iter()
+            .zip(sb.iter())
+            .map(|(x, y)| x + y)
+            .collect::<Vec<f32>>()
     });
     Ok(result.into_pyarray(py))
 }
@@ -324,13 +344,20 @@ fn sub<'py>(
     a: PyReadonlyArray1<'py, f32>,
     b: PyReadonlyArray1<'py, f32>,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let sa = a.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let sb = b.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let sa = a
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let sb = b
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     if sa.len() != sb.len() {
         return Err(PyValueError::new_err("array length mismatch"));
     }
     let result = py.detach(|| {
-        sa.iter().zip(sb.iter()).map(|(x, y)| x - y).collect::<Vec<f32>>()
+        sa.iter()
+            .zip(sb.iter())
+            .map(|(x, y)| x - y)
+            .collect::<Vec<f32>>()
     });
     Ok(result.into_pyarray(py))
 }
@@ -342,7 +369,9 @@ fn scale<'py>(
     a: PyReadonlyArray1<'py, f32>,
     scalar: f32,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let sa = a.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let sa = a
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let result = py.detach(|| sa.iter().map(|x| x * scalar).collect::<Vec<f32>>());
     Ok(result.into_pyarray(py))
 }
@@ -353,7 +382,9 @@ fn relu<'py>(
     py: Python<'py>,
     a: PyReadonlyArray1<'py, f32>,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let sa = a.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let sa = a
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let result = py.detach(|| sa.iter().map(|&x| f32::max(x, 0.0)).collect::<Vec<f32>>());
     Ok(result.into_pyarray(py))
 }
@@ -364,7 +395,9 @@ fn softmax<'py>(
     py: Python<'py>,
     a: PyReadonlyArray1<'py, f32>,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let sa = a.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let sa = a
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let result = py.detach(|| {
         let max_val = sa.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         let exps: Vec<f32> = sa.iter().map(|&x| (x - max_val).exp()).collect();
@@ -380,13 +413,17 @@ fn softmax<'py>(
 
 #[pyfunction]
 fn sum(a: PyReadonlyArray1<'_, f32>) -> PyResult<f32> {
-    let s = a.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let s = a
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(s.iter().sum())
 }
 
 #[pyfunction]
 fn mean(a: PyReadonlyArray1<'_, f32>) -> PyResult<f32> {
-    let s = a.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let s = a
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     if s.is_empty() {
         return Ok(0.0);
     }
@@ -395,13 +432,17 @@ fn mean(a: PyReadonlyArray1<'_, f32>) -> PyResult<f32> {
 
 #[pyfunction]
 fn max(a: PyReadonlyArray1<'_, f32>) -> PyResult<f32> {
-    let s = a.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let s = a
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(s.iter().cloned().fold(f32::NEG_INFINITY, f32::max))
 }
 
 #[pyfunction]
 fn min(a: PyReadonlyArray1<'_, f32>) -> PyResult<f32> {
-    let s = a.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let s = a
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(s.iter().cloned().fold(f32::INFINITY, f32::min))
 }
 
@@ -419,7 +460,9 @@ fn quantize<'py>(
     out_features: usize,
     in_features: usize,
 ) -> PyResult<(PyTernaryWeight, PyQuantStats)> {
-    let w = weights.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let w = weights
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     if w.len() != out_features * in_features {
         return Err(PyValueError::new_err(format!(
             "weights length {} != out_features({}) * in_features({})",
@@ -443,7 +486,9 @@ fn quantize_sparse<'py>(
     in_features: usize,
     threshold: f32,
 ) -> PyResult<(PyTernaryWeight, PyQuantStats)> {
-    let w = weights.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let w = weights
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     if w.len() != out_features * in_features {
         return Err(PyValueError::new_err("weights length mismatch"));
     }
@@ -456,10 +501,7 @@ fn quantize_sparse<'py>(
 
 /// Dequantize ternary weights back to FP32.
 #[pyfunction]
-fn dequantize<'py>(
-    py: Python<'py>,
-    weights: &PyTernaryWeight,
-) -> Bound<'py, PyArray1<f32>> {
+fn dequantize<'py>(py: Python<'py>, weights: &PyTernaryWeight) -> Bound<'py, PyArray1<f32>> {
     let inner = &weights.inner;
     let result = py.detach(|| dequantize_from_ternary(inner));
     result.into_pyarray(py)
@@ -471,7 +513,9 @@ fn quantization_error(
     original: PyReadonlyArray1<'_, f32>,
     quantized: &PyTernaryWeight,
 ) -> PyResult<(f32, f32, f32)> {
-    let orig = original.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let orig = original
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let err = compute_quantization_error(orig, &quantized.inner);
     Ok((err.mae, err.mse, err.max_error))
 }

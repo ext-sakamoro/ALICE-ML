@@ -43,9 +43,7 @@ impl Arena {
         // SAFETY: aligned_offset is within buffer bounds (checked above). The pointer arithmetic
         // stays within the allocated Vec<u8> region. The cast to *mut T is valid because
         // aligned_offset satisfies T's alignment requirement (computed via align_of::<T>()).
-        let ptr = unsafe {
-            self.buffer.as_mut_ptr().add(aligned_offset) as *mut T
-        };
+        let ptr = unsafe { self.buffer.as_mut_ptr().add(aligned_offset) as *mut T };
 
         self.offset = aligned_offset + size;
 
@@ -136,7 +134,10 @@ mod tests {
         let _ = arena.alloc::<f32>(10).unwrap();
 
         // Should fail (not enough space)
-        assert!(arena.alloc::<f32>(100).is_none(), "should return None when exhausted");
+        assert!(
+            arena.alloc::<f32>(100).is_none(),
+            "should return None when exhausted"
+        );
     }
 
     #[test]
@@ -149,13 +150,20 @@ mod tests {
         // Next allocation should still be aligned
         let floats = arena.alloc::<f32>(4).unwrap();
         let ptr = floats.as_ptr() as usize;
-        assert_eq!(ptr % core::mem::align_of::<f32>(), 0, "f32 allocation must be aligned");
+        assert_eq!(
+            ptr % core::mem::align_of::<f32>(),
+            0,
+            "f32 allocation must be aligned"
+        );
     }
 
     #[test]
     fn test_arena_overflow_protection() {
         let mut arena = Arena::new(1024);
         // Requesting usize::MAX elements should return None, not panic
-        assert!(arena.alloc::<f32>(usize::MAX).is_none(), "overflow should return None");
+        assert!(
+            arena.alloc::<f32>(usize::MAX).is_none(),
+            "overflow should return None"
+        );
     }
 }

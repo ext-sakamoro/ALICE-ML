@@ -4,7 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::ops::{TernaryWeightKernel, ternary_matvec_kernel};
+use crate::ops::{ternary_matvec_kernel, TernaryWeightKernel};
 
 /// A BitLinear layer: ternary weights + optional bias + optional pre-norm.
 ///
@@ -113,8 +113,7 @@ impl BitLinear {
 
     /// Memory footprint in bytes (weights + bias).
     pub fn memory_bytes(&self) -> usize {
-        self.weights.memory_bytes()
-            + self.bias.as_ref().map_or(0, |b| b.len() * 4)
+        self.weights.memory_bytes() + self.bias.as_ref().map_or(0, |b| b.len() * 4)
     }
 
     /// Compression ratio vs an equivalent FP32 linear layer (weights + bias).
@@ -152,8 +151,16 @@ mod tests {
 
         layer.forward(&input, &mut output);
 
-        assert!((output[0] - (-1.0)).abs() < 1e-5, "y[0] should be -1, got {}", output[0]);
-        assert!((output[1] - 3.0).abs() < 1e-5, "y[1] should be 3, got {}", output[1]);
+        assert!(
+            (output[0] - (-1.0)).abs() < 1e-5,
+            "y[0] should be -1, got {}",
+            output[0]
+        );
+        assert!(
+            (output[1] - 3.0).abs() < 1e-5,
+            "y[1] should be 3, got {}",
+            output[1]
+        );
     }
 
     // ---- forward() with bias ----
@@ -170,8 +177,16 @@ mod tests {
 
         layer.forward(&input, &mut output);
 
-        assert!((output[0] - 9.0).abs() < 1e-5, "y[0] with bias should be 9, got {}", output[0]);
-        assert!((output[1] - (-2.0)).abs() < 1e-5, "y[1] with bias should be -2, got {}", output[1]);
+        assert!(
+            (output[0] - 9.0).abs() < 1e-5,
+            "y[0] with bias should be 9, got {}",
+            output[0]
+        );
+        assert!(
+            (output[1] - (-2.0)).abs() < 1e-5,
+            "y[1] with bias should be -2, got {}",
+            output[1]
+        );
     }
 
     // ---- forward() with pre_norm ----
@@ -237,7 +252,9 @@ mod tests {
             assert!(
                 (out1[i] - out2[i]).abs() < 1e-4,
                 "pre_norm scale-invariance failed at [{}]: {} vs {}",
-                i, out1[i], out2[i]
+                i,
+                out1[i],
+                out2[i]
             );
         }
     }
@@ -251,7 +268,12 @@ mod tests {
         // minus_bits: 2 words × 4 bytes = 8 bytes
         // total = 16 bytes
         let layer = BitLinear::new(make_kernel_2x2(), None, false);
-        assert_eq!(layer.memory_bytes(), 16, "2x2 kernel should use 16 bytes, got {}", layer.memory_bytes());
+        assert_eq!(
+            layer.memory_bytes(),
+            16,
+            "2x2 kernel should use 16 bytes, got {}",
+            layer.memory_bytes()
+        );
     }
 
     #[test]
@@ -259,7 +281,12 @@ mod tests {
         let bias = vec![1.0f32, 2.0];
         let layer = BitLinear::new(make_kernel_2x2(), Some(bias), false);
         // 16 (weights) + 2*4 (bias) = 24
-        assert_eq!(layer.memory_bytes(), 24, "2x2 + bias should use 24 bytes, got {}", layer.memory_bytes());
+        assert_eq!(
+            layer.memory_bytes(),
+            24,
+            "2x2 + bias should use 24 bytes, got {}",
+            layer.memory_bytes()
+        );
     }
 
     #[test]
@@ -268,7 +295,11 @@ mod tests {
         // Bit-parallel: 16 bytes (same in this tiny example)
         let layer = BitLinear::new(make_kernel_2x2(), None, false);
         let ratio = layer.compression_ratio();
-        assert!(ratio > 0.0, "compression ratio should be positive, got {}", ratio);
+        assert!(
+            ratio > 0.0,
+            "compression ratio should be positive, got {}",
+            ratio
+        );
     }
 
     #[test]
@@ -279,7 +310,11 @@ mod tests {
         let layer = BitLinear::new(kernel, None, false);
         let ratio = layer.compression_ratio();
         // Expect roughly 16x compression (may vary slightly with alignment)
-        assert!(ratio > 10.0, "large layer should achieve >10x compression, got {:.2}x", ratio);
+        assert!(
+            ratio > 10.0,
+            "large layer should achieve >10x compression, got {:.2}x",
+            ratio
+        );
     }
 
     // ---- larger matmul correctness ----
@@ -290,18 +325,27 @@ mod tests {
         // y[0] = 1 - 2 + 0     = -1
         // y[1] = 1 + 2 - 3     =  0
         // y[2] = 0 - 2 + 3     =  1
-        let kernel = TernaryWeightKernel::from_ternary(
-            &[1i8, -1, 0, 1, 1, -1, 0, -1, 1],
-            3, 3,
-        );
+        let kernel = TernaryWeightKernel::from_ternary(&[1i8, -1, 0, 1, 1, -1, 0, -1, 1], 3, 3);
         let layer = BitLinear::new(kernel, None, false);
         let input = [1.0f32, 2.0, 3.0];
         let mut output = [0.0f32; 3];
 
         layer.forward(&input, &mut output);
 
-        assert!((output[0] - (-1.0)).abs() < 1e-5, "y[0] should be -1, got {}", output[0]);
-        assert!((output[1] - 0.0).abs() < 1e-5, "y[1] should be 0, got {}", output[1]);
-        assert!((output[2] - 1.0).abs() < 1e-5, "y[2] should be 1, got {}", output[2]);
+        assert!(
+            (output[0] - (-1.0)).abs() < 1e-5,
+            "y[0] should be -1, got {}",
+            output[0]
+        );
+        assert!(
+            (output[1] - 0.0).abs() < 1e-5,
+            "y[1] should be 0, got {}",
+            output[1]
+        );
+        assert!(
+            (output[2] - 1.0).abs() < 1e-5,
+            "y[2] should be 1, got {}",
+            output[2]
+        );
     }
 }

@@ -86,7 +86,8 @@ pub fn quantize_to_ternary(
     out_features: usize,
     in_features: usize,
 ) -> (TernaryWeight, QuantStats) {
-    let total = out_features.checked_mul(in_features)
+    let total = out_features
+        .checked_mul(in_features)
         .expect("dimension overflow: out_features * in_features");
     assert_eq!(weights.len(), total);
 
@@ -155,7 +156,8 @@ pub fn quantize_to_ternary_sparse(
     in_features: usize,
     threshold: f32,
 ) -> (TernaryWeight, QuantStats) {
-    let total = out_features.checked_mul(in_features)
+    let total = out_features
+        .checked_mul(in_features)
         .expect("dimension overflow: out_features * in_features");
     assert_eq!(weights.len(), total);
 
@@ -210,7 +212,9 @@ pub fn quantize_to_ternary_sparse(
     stats.mae = mae_sum * inv_len;
 
     let tw = TernaryWeight::from_packed(
-        TernaryWeight::from_ternary(&ternary_values, out_features, in_features).packed().to_vec(),
+        TernaryWeight::from_ternary(&ternary_values, out_features, in_features)
+            .packed()
+            .to_vec(),
         out_features,
         in_features,
         scale,
@@ -237,7 +241,10 @@ pub fn dequantize_from_ternary(weights: &TernaryWeight) -> Vec<f32> {
 }
 
 /// Compute quantization error metrics
-pub fn compute_quantization_error(original: &[f32], quantized: &TernaryWeight) -> QuantizationError {
+pub fn compute_quantization_error(
+    original: &[f32],
+    quantized: &TernaryWeight,
+) -> QuantizationError {
     let dequantized = dequantize_from_ternary(quantized);
 
     assert_eq!(original.len(), dequantized.len());
@@ -282,7 +289,8 @@ pub struct QuantizationError {
 /// Compute Signal-to-Noise Ratio
 fn compute_snr(original: &[f32], reconstructed: &[f32]) -> f32 {
     let signal_power: f32 = original.iter().map(|x| x * x).sum();
-    let noise_power: f32 = original.iter()
+    let noise_power: f32 = original
+        .iter()
         .zip(reconstructed.iter())
         .map(|(o, r)| (o - r).powi(2))
         .sum();
@@ -322,7 +330,10 @@ mod tests {
         let (_tw, stats) = quantize_to_ternary_sparse(&weights, 1, 6, 0.5);
 
         // Small weights should be zeroed
-        assert!(stats.zero_count > 0, "sparse quantization should produce zeros");
+        assert!(
+            stats.zero_count > 0,
+            "sparse quantization should produce zeros"
+        );
         assert!(stats.sparsity() > 0.0, "sparsity should be > 0");
     }
 
@@ -353,7 +364,11 @@ mod tests {
         };
 
         let bits = stats.effective_bits();
-        assert!((bits - 1.58).abs() < 0.1, "equal ternary should be ~1.58 bits, got {:.2}", bits);
+        assert!(
+            (bits - 1.58).abs() < 0.1,
+            "equal ternary should be ~1.58 bits, got {:.2}",
+            bits
+        );
     }
 
     #[test]
@@ -377,6 +392,10 @@ mod tests {
         // FP32: 1000 * 4 = 4000 bytes
         // Ternary: 1000 / 4 = 250 bytes
         let compression = tw.compression_ratio();
-        assert!((compression - 16.0).abs() < 1.0, "should compress ~16x, got {:.1}x", compression);
+        assert!(
+            (compression - 16.0).abs() < 1.0,
+            "should compress ~16x, got {:.1}x",
+            compression
+        );
     }
 }

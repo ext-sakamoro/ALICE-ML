@@ -481,7 +481,7 @@ pub fn tensor_copy(src: &Tensor, dst: &mut Tensor) {
 #[inline(always)]
 fn fast_exp(x: f32) -> f32 {
     // Clamp to avoid overflow (> 88) and flush-to-zero (< -87)
-    let x = x.max(-87.0).min(88.0);
+    let x = x.clamp(-87.0, 88.0);
     // Schraudolph's approximation: bit-cast integer to float
     // 12102203.0 ~= 2^23 / ln(2);  1065353216 = 127 << 23 (exponent bias)
     let a = (12102203.0_f32.mul_add(x, 1065353216.0_f32)) as i32;
@@ -548,7 +548,7 @@ pub fn tensor_softmax_fast(a: &Tensor, out: &mut Tensor) {
 pub fn tensor_gelu(a: &Tensor, out: &mut Tensor) {
     debug_assert_eq!(a.shape[..a.ndim], out.shape[..out.ndim]);
     let len = a.data.len();
-    let sqrt_2_over_pi: f32 = 0.7978845608; // sqrt(2/pi)
+    let sqrt_2_over_pi: f32 = 0.797_884_6; // sqrt(2/pi)
     for i in 0..len {
         let x = a.data[i];
         let inner = sqrt_2_over_pi * (x + 0.044715 * x * x * x);
@@ -562,7 +562,7 @@ pub fn tensor_gelu(a: &Tensor, out: &mut Tensor) {
 /// GELU in-place
 #[inline]
 pub fn tensor_gelu_inplace(a: &mut Tensor) {
-    let sqrt_2_over_pi: f32 = 0.7978845608;
+    let sqrt_2_over_pi: f32 = 0.797_884_6;
     for i in 0..a.data.len() {
         let x = a.data[i];
         let inner = sqrt_2_over_pi * (x + 0.044715 * x * x * x);
@@ -745,7 +745,8 @@ impl QuantizedTensor {
         assert_eq!(input.len(), total);
 
         // Find max absolute value
-        let max_abs = input.iter()
+        let max_abs = input
+            .iter()
             .map(|x| x.abs())
             .fold(0.0f32, f32::max)
             .max(1e-8);
@@ -753,7 +754,8 @@ impl QuantizedTensor {
         let scale = max_abs / 127.0;
 
         // Quantize
-        let quantized: Vec<i8> = input.iter()
+        let quantized: Vec<i8> = input
+            .iter()
             .map(|&x| (x / scale).round().clamp(-127.0, 127.0) as i8)
             .collect();
 
@@ -936,7 +938,10 @@ mod tests {
         let t = Tensor::zeros(&mut arena, &[3, 4]).unwrap();
 
         assert_eq!(t.shape(), &[3, 4], "shape should be [3, 4]");
-        assert!(t.data().iter().all(|&x| x == 0.0), "all elements should be zero");
+        assert!(
+            t.data().iter().all(|&x| x == 0.0),
+            "all elements should be zero"
+        );
     }
 
     #[test]
@@ -1056,7 +1061,13 @@ mod tests {
 
         // Check approximate equality
         for (idx, (o, &i)) in output.iter().zip(input.iter()).enumerate() {
-            assert!((o - i).abs() < 0.02, "dequantized[{}] = {}, expected ~{}", idx, o, i);
+            assert!(
+                (o - i).abs() < 0.02,
+                "dequantized[{}] = {}, expected ~{}",
+                idx,
+                o,
+                i
+            );
         }
     }
 
@@ -1090,7 +1101,11 @@ mod tests {
         let a = Tensor::from_arena(&mut a_data, &[1]);
         let mut out = Tensor::from_arena(&mut out_data, &[1]);
         tensor_gelu(&a, &mut out);
-        assert!(out.data()[0].abs() < 1e-5, "GELU(0) should be 0, got {}", out.data()[0]);
+        assert!(
+            out.data()[0].abs() < 1e-5,
+            "GELU(0) should be 0, got {}",
+            out.data()[0]
+        );
     }
 
     #[test]
@@ -1101,7 +1116,11 @@ mod tests {
         let a = Tensor::from_arena(&mut a_data, &[1]);
         let mut out = Tensor::from_arena(&mut out_data, &[1]);
         tensor_gelu(&a, &mut out);
-        assert!((out.data()[0] - 10.0).abs() < 1e-3, "GELU(10) ≈ 10, got {}", out.data()[0]);
+        assert!(
+            (out.data()[0] - 10.0).abs() < 1e-3,
+            "GELU(10) ≈ 10, got {}",
+            out.data()[0]
+        );
     }
 
     #[test]
@@ -1112,7 +1131,11 @@ mod tests {
         let a = Tensor::from_arena(&mut a_data, &[1]);
         let mut out = Tensor::from_arena(&mut out_data, &[1]);
         tensor_gelu(&a, &mut out);
-        assert!(out.data()[0].abs() < 1e-3, "GELU(-10) ≈ 0, got {}", out.data()[0]);
+        assert!(
+            out.data()[0].abs() < 1e-3,
+            "GELU(-10) ≈ 0, got {}",
+            out.data()[0]
+        );
     }
 
     #[test]
@@ -1132,7 +1155,10 @@ mod tests {
         for i in 0..5 {
             assert!(
                 (out.data()[i] - a2.data()[i]).abs() < 1e-6,
-                "GELU DPS vs inplace mismatch at {}: {} vs {}", i, out.data()[i], a2.data()[i]
+                "GELU DPS vs inplace mismatch at {}: {} vs {}",
+                i,
+                out.data()[i],
+                a2.data()[i]
             );
         }
     }
@@ -1147,7 +1173,11 @@ mod tests {
         let a = Tensor::from_arena(&mut a_data, &[1]);
         let mut out = Tensor::from_arena(&mut out_data, &[1]);
         tensor_silu(&a, &mut out);
-        assert!(out.data()[0].abs() < 1e-6, "SiLU(0) should be 0, got {}", out.data()[0]);
+        assert!(
+            out.data()[0].abs() < 1e-6,
+            "SiLU(0) should be 0, got {}",
+            out.data()[0]
+        );
     }
 
     #[test]
@@ -1158,7 +1188,11 @@ mod tests {
         let a = Tensor::from_arena(&mut a_data, &[1]);
         let mut out = Tensor::from_arena(&mut out_data, &[1]);
         tensor_silu(&a, &mut out);
-        assert!((out.data()[0] - 10.0).abs() < 1e-3, "SiLU(10) ≈ 10, got {}", out.data()[0]);
+        assert!(
+            (out.data()[0] - 10.0).abs() < 1e-3,
+            "SiLU(10) ≈ 10, got {}",
+            out.data()[0]
+        );
     }
 
     #[test]
@@ -1170,7 +1204,12 @@ mod tests {
         let a = Tensor::from_arena(&mut a_data, &[1]);
         let mut out = Tensor::from_arena(&mut out_data, &[1]);
         tensor_silu(&a, &mut out);
-        assert!((out.data()[0] - expected).abs() < 1e-6, "SiLU(1) = {}, expected {}", out.data()[0], expected);
+        assert!(
+            (out.data()[0] - expected).abs() < 1e-6,
+            "SiLU(1) = {}, expected {}",
+            out.data()[0],
+            expected
+        );
     }
 
     #[test]
@@ -1189,7 +1228,10 @@ mod tests {
         for i in 0..5 {
             assert!(
                 (out.data()[i] - a2.data()[i]).abs() < 1e-6,
-                "SiLU DPS vs inplace mismatch at {}: {} vs {}", i, out.data()[i], a2.data()[i]
+                "SiLU DPS vs inplace mismatch at {}: {} vs {}",
+                i,
+                out.data()[i],
+                a2.data()[i]
             );
         }
     }
@@ -1207,7 +1249,12 @@ mod tests {
         // sum_sq = 1, rms = sqrt(1/3 + eps) ≈ 1/sqrt(3)
         // out[0] = 1 * sqrt(3) ≈ 1.732
         let expected = 1.0 / (1.0f32 / 3.0 + 1e-8f32).sqrt();
-        assert!((out.data()[0] - expected).abs() < 1e-4, "RMSNorm[0] = {}, expected {}", out.data()[0], expected);
+        assert!(
+            (out.data()[0] - expected).abs() < 1e-4,
+            "RMSNorm[0] = {}, expected {}",
+            out.data()[0],
+            expected
+        );
         assert!(out.data()[1].abs() < 1e-6, "RMSNorm[1] should be 0");
         assert!(out.data()[2].abs() < 1e-6, "RMSNorm[2] should be 0");
     }
@@ -1228,7 +1275,13 @@ mod tests {
         // rms = sqrt(4/4) = 1.0, inv_rms = 1.0 → out = weight
         let expected = [2.0f32, 0.5, 3.0, 1.0];
         for (i, (&o, &e)) in out.data().iter().zip(expected.iter()).enumerate() {
-            assert!((o - e).abs() < 1e-5, "RMSNorm with weight[{}] = {}, expected {}", i, o, e);
+            assert!(
+                (o - e).abs() < 1e-5,
+                "RMSNorm with weight[{}] = {}, expected {}",
+                i,
+                o,
+                e
+            );
         }
     }
 
@@ -1242,7 +1295,11 @@ mod tests {
         tensor_rms_norm(&a, None, 1e-8, &mut out);
 
         let rms_out: f32 = (out.data().iter().map(|x| x * x).sum::<f32>() / 4.0).sqrt();
-        assert!((rms_out - 1.0).abs() < 1e-4, "Output RMS should be 1.0, got {}", rms_out);
+        assert!(
+            (rms_out - 1.0).abs() < 1e-4,
+            "Output RMS should be 1.0, got {}",
+            rms_out
+        );
     }
 
     // ---- LayerNorm tests ----
@@ -1257,7 +1314,11 @@ mod tests {
         tensor_layer_norm(&a, None, None, 1e-8, &mut out);
 
         let mean: f32 = out.data().iter().sum::<f32>() / 4.0;
-        assert!(mean.abs() < 1e-5, "LayerNorm output mean should be 0, got {}", mean);
+        assert!(
+            mean.abs() < 1e-5,
+            "LayerNorm output mean should be 0, got {}",
+            mean
+        );
     }
 
     #[test]
@@ -1270,8 +1331,17 @@ mod tests {
         tensor_layer_norm(&a, None, None, 1e-8, &mut out);
 
         let mean: f32 = out.data().iter().sum::<f32>() / 4.0;
-        let var: f32 = out.data().iter().map(|x| (x - mean) * (x - mean)).sum::<f32>() / 4.0;
-        assert!((var - 1.0).abs() < 1e-4, "LayerNorm output variance should be 1, got {}", var);
+        let var: f32 = out
+            .data()
+            .iter()
+            .map(|x| (x - mean) * (x - mean))
+            .sum::<f32>()
+            / 4.0;
+        assert!(
+            (var - 1.0).abs() < 1e-4,
+            "LayerNorm output variance should be 1, got {}",
+            var
+        );
     }
 
     #[test]
@@ -1294,7 +1364,11 @@ mod tests {
         // output = 2*normalized + 1
         let mean_out: f32 = out.data().iter().sum::<f32>() / 4.0;
         // With weight=2 and bias=1 applied uniformly, mean_out ≈ 2*0 + 1 = 1
-        assert!((mean_out - 1.0).abs() < 1e-4, "LayerNorm with bias=1 mean should be 1, got {}", mean_out);
+        assert!(
+            (mean_out - 1.0).abs() < 1e-4,
+            "LayerNorm with bias=1 mean should be 1, got {}",
+            mean_out
+        );
     }
 
     // ============================================================================
@@ -1314,9 +1388,7 @@ mod tests {
     #[test]
     fn test_fast_exp_accuracy() {
         // Sample points spanning typical softmax input range
-        let test_points: &[f32] = &[
-            -10.0, -5.0, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 5.0, 10.0,
-        ];
+        let test_points: &[f32] = &[-10.0, -5.0, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 5.0, 10.0];
         for &x in test_points {
             let exact = x.exp();
             let approx = fast_exp(x);
@@ -1324,7 +1396,11 @@ mod tests {
             assert!(
                 rel_err < 0.08,
                 "fast_exp({}) = {} but f32::exp({}) = {} — relative error {:.4} >= 8%",
-                x, approx, x, exact, rel_err
+                x,
+                approx,
+                x,
+                exact,
+                rel_err
             );
         }
         // Verify monotonicity: fast_exp must be strictly increasing.
@@ -1335,7 +1411,8 @@ mod tests {
             assert!(
                 fast_exp(lo) < fast_exp(hi),
                 "fast_exp must be monotone: fast_exp({}) >= fast_exp({})",
-                lo, hi
+                lo,
+                hi
             );
         }
     }
@@ -1345,7 +1422,11 @@ mod tests {
     fn test_fast_exp_clamping() {
         // Should not overflow to +inf or panic
         let v = fast_exp(1000.0);
-        assert!(v.is_finite(), "fast_exp(1000) should be finite (clamped), got {}", v);
+        assert!(
+            v.is_finite(),
+            "fast_exp(1000) should be finite (clamped), got {}",
+            v
+        );
 
         // Should not flush to zero or panic
         let v = fast_exp(-1000.0);
@@ -1368,7 +1449,8 @@ mod tests {
         let sum: f32 = out.data().iter().sum();
         assert!(
             (sum - 1.0).abs() < 1e-4,
-            "tensor_softmax_fast sum should be ~1.0, got {}", sum
+            "tensor_softmax_fast sum should be ~1.0, got {}",
+            sum
         );
     }
 
@@ -1423,7 +1505,10 @@ mod tests {
             assert!(
                 rel_err < 0.08,
                 "softmax_fast[{}]: exact={:.6} fast={:.6} rel_err={:.4} >= 8%",
-                i, exact, fast, rel_err
+                i,
+                exact,
+                fast,
+                rel_err
             );
         }
     }
@@ -1446,7 +1531,9 @@ mod tests {
 
         assert!(
             (result - expected).abs() < 1e-4,
-            "tensor_sum: expected {}, got {}", expected, result
+            "tensor_sum: expected {}, got {}",
+            expected,
+            result
         );
     }
 
@@ -1457,9 +1544,9 @@ mod tests {
     fn test_tensor_max_correctness() {
         // 17 elements: covers 2 full AVX2 chunks (16 elements) + 1 tail
         let mut a_data = [
-            1.0f32, -5.0, 3.0, 2.0, 0.5, -1.0, 7.0, 4.0,  // chunk 0
-            2.5, 6.0, -2.0, 1.5, 3.5, -0.5, 5.5, 0.0,      // chunk 1
-            9.0,                                              // tail
+            1.0f32, -5.0, 3.0, 2.0, 0.5, -1.0, 7.0, 4.0, // chunk 0
+            2.5, 6.0, -2.0, 1.5, 3.5, -0.5, 5.5, 0.0, // chunk 1
+            9.0, // tail
         ];
 
         let expected = a_data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
@@ -1468,7 +1555,9 @@ mod tests {
 
         assert!(
             (result - expected).abs() < 1e-6,
-            "tensor_max: expected {}, got {}", expected, result
+            "tensor_max: expected {}, got {}",
+            expected,
+            result
         );
     }
 
@@ -1480,7 +1569,8 @@ mod tests {
         let result = tensor_max(&a);
         assert!(
             result == f32::NEG_INFINITY,
-            "tensor_max on empty should be NEG_INFINITY, got {}", result
+            "tensor_max on empty should be NEG_INFINITY, got {}",
+            result
         );
     }
 
@@ -1491,9 +1581,9 @@ mod tests {
     fn test_tensor_min_correctness() {
         // 17 elements: covers 2 full AVX2 chunks + 1 tail
         let mut a_data = [
-            1.0f32, -5.0, 3.0, 2.0, 0.5, -1.0, 7.0, 4.0,  // chunk 0
-            2.5, 6.0, -2.0, 1.5, 3.5, -0.5, 5.5, 0.0,      // chunk 1
-            -9.0,                                             // tail
+            1.0f32, -5.0, 3.0, 2.0, 0.5, -1.0, 7.0, 4.0, // chunk 0
+            2.5, 6.0, -2.0, 1.5, 3.5, -0.5, 5.5, 0.0,  // chunk 1
+            -9.0, // tail
         ];
 
         let expected = a_data.iter().cloned().fold(f32::INFINITY, f32::min);
@@ -1502,7 +1592,9 @@ mod tests {
 
         assert!(
             (result - expected).abs() < 1e-6,
-            "tensor_min: expected {}, got {}", expected, result
+            "tensor_min: expected {}, got {}",
+            expected,
+            result
         );
     }
 
@@ -1514,7 +1606,8 @@ mod tests {
         let result = tensor_min(&a);
         assert!(
             result == f32::INFINITY,
-            "tensor_min on empty should be INFINITY, got {}", result
+            "tensor_min on empty should be INFINITY, got {}",
+            result
         );
     }
 }

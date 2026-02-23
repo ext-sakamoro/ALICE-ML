@@ -94,12 +94,7 @@ impl LayerConfig {
     }
 
     /// Construct a layer with explicit weight variance and sparsity.
-    pub fn with_stats(
-        fan_in: usize,
-        fan_out: usize,
-        weight_variance: f32,
-        sparsity: f32,
-    ) -> Self {
+    pub fn with_stats(fan_in: usize, fan_out: usize, weight_variance: f32, sparsity: f32) -> Self {
         Self {
             fan_in,
             fan_out,
@@ -146,13 +141,7 @@ impl CumulativeQuantError {
     /// - `fan_in`      – number of inputs (used for σ_out formula).
     /// - `sigma_w`     – weight std-dev of this layer.
     /// - `has_residual`– if true, use additive error model for σ_act.
-    pub fn accumulate(
-        &mut self,
-        epsilon: f64,
-        fan_in: usize,
-        sigma_w: f64,
-        has_residual: bool,
-    ) {
+    pub fn accumulate(&mut self, epsilon: f64, fan_in: usize, sigma_w: f64, has_residual: bool) {
         // Multiplicative error product
         self.error_product *= 1.0 + epsilon;
 
@@ -563,7 +552,11 @@ mod tests {
 
         // Layer indices must be 0..99 in order.
         for (i, stat) in report.layers.iter().enumerate() {
-            assert_eq!(stat.layer_index, i, "layer_index mismatch at position {}", i);
+            assert_eq!(
+                stat.layer_index, i,
+                "layer_index mismatch at position {}",
+                i
+            );
         }
     }
 

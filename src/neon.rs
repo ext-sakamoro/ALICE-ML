@@ -86,17 +86,9 @@ pub unsafe fn ternary_matvec_neon(
             // Blend: select x where mask is set, else 0
             let zeros = vdupq_n_f32(0.0);
             let plus_mask_f = vreinterpretq_f32_u32(plus_mask);
-            let plus_selected = vbslq_f32(
-                vreinterpretq_u32_f32(plus_mask_f),
-                x_vec,
-                zeros,
-            );
+            let plus_selected = vbslq_f32(vreinterpretq_u32_f32(plus_mask_f), x_vec, zeros);
             let minus_mask_f = vreinterpretq_f32_u32(minus_mask);
-            let minus_selected = vbslq_f32(
-                vreinterpretq_u32_f32(minus_mask_f),
-                x_vec,
-                zeros,
-            );
+            let minus_selected = vbslq_f32(vreinterpretq_u32_f32(minus_mask_f), x_vec, zeros);
 
             acc_plus = vaddq_f32(acc_plus, plus_selected);
             acc_minus = vaddq_f32(acc_minus, minus_selected);
@@ -130,11 +122,7 @@ pub unsafe fn ternary_matvec_neon(
 /// Dispatch to NEON on aarch64 (always available on ARMv8+)
 #[cfg(target_arch = "aarch64")]
 #[inline]
-pub fn ternary_matvec_dispatch(
-    input: &[f32],
-    weights: &TernaryWeightKernel,
-    output: &mut [f32],
-) {
+pub fn ternary_matvec_dispatch(input: &[f32], weights: &TernaryWeightKernel, output: &mut [f32]) {
     // NEON is mandatory on aarch64 — no runtime detection needed
     unsafe { ternary_matvec_neon(input, weights, output) }
 }
@@ -156,8 +144,16 @@ mod tests {
 
         unsafe { ternary_matvec_neon(&input, &weights, &mut output) };
 
-        assert!((output[0] - (-1.0)).abs() < 1e-6, "y[0] = 2-3 = -1, got {}", output[0]);
-        assert!((output[1] - 3.0).abs() < 1e-6, "y[1] = 0+3 = 3, got {}", output[1]);
+        assert!(
+            (output[0] - (-1.0)).abs() < 1e-6,
+            "y[0] = 2-3 = -1, got {}",
+            output[0]
+        );
+        assert!(
+            (output[1] - 3.0).abs() < 1e-6,
+            "y[1] = 0+3 = 3, got {}",
+            output[1]
+        );
     }
 
     #[test]
@@ -168,7 +164,11 @@ mod tests {
 
         unsafe { ternary_matvec_neon(&input, &weights, &mut output) };
 
-        assert!((output[0] - 10.0).abs() < 1e-6, "all-plus sum should be 10, got {}", output[0]);
+        assert!(
+            (output[0] - 10.0).abs() < 1e-6,
+            "all-plus sum should be 10, got {}",
+            output[0]
+        );
     }
 
     #[test]
@@ -187,7 +187,10 @@ mod tests {
         for i in 0..3 {
             assert!(
                 (out_scalar[i] - out_neon[i]).abs() < 1e-6,
-                "scalar vs neon mismatch at row {}: {} vs {}", i, out_scalar[i], out_neon[i]
+                "scalar vs neon mismatch at row {}: {} vs {}",
+                i,
+                out_scalar[i],
+                out_neon[i]
             );
         }
     }
@@ -209,7 +212,10 @@ mod tests {
         for i in 0..2 {
             assert!(
                 (out_scalar[i] - out_neon[i]).abs() < 1e-4,
-                "large dim mismatch at row {}: {} vs {}", i, out_scalar[i], out_neon[i]
+                "large dim mismatch at row {}: {} vs {}",
+                i,
+                out_scalar[i],
+                out_neon[i]
             );
         }
     }
@@ -222,7 +228,11 @@ mod tests {
 
         unsafe { ternary_matvec_neon(&input, &kernel, &mut output) };
 
-        assert!((output[0] - 5.0).abs() < 1e-6, "10 * 0.5 = 5, got {}", output[0]);
+        assert!(
+            (output[0] - 5.0).abs() < 1e-6,
+            "10 * 0.5 = 5, got {}",
+            output[0]
+        );
     }
 
     #[test]

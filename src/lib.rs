@@ -85,12 +85,12 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-pub mod tensor;
-pub mod ops;
-pub mod quantize;
 pub mod arena;
 pub mod error_analysis;
 pub mod layer;
+pub mod ops;
+pub mod quantize;
+pub mod tensor;
 
 #[cfg(all(target_arch = "aarch64", feature = "neon"))]
 pub mod neon;
@@ -109,31 +109,16 @@ pub use arena::Arena;
 
 // Tensor types
 pub use tensor::{
-    Tensor,           // Borrowed, zero-allocation
-    OwnedTensor,      // For model loading only
-    QuantizedTensor,  // INT8 quantized
+    OwnedTensor,     // For model loading only
+    QuantizedTensor, // INT8 quantized
+    Tensor,          // Borrowed, zero-allocation
 };
 
 // DPS tensor operations
 pub use tensor::{
-    tensor_add,
-    tensor_sub,
-    tensor_scale,
-    tensor_relu,
-    tensor_relu_inplace,
-    tensor_gelu,
-    tensor_gelu_inplace,
-    tensor_silu,
-    tensor_silu_inplace,
-    tensor_rms_norm,
-    tensor_layer_norm,
-    tensor_softmax,
-    tensor_softmax_fast,
-    tensor_sum,
-    tensor_mean,
-    tensor_max,
-    tensor_min,
-    tensor_copy,
+    tensor_add, tensor_copy, tensor_gelu, tensor_gelu_inplace, tensor_layer_norm, tensor_max,
+    tensor_mean, tensor_min, tensor_relu, tensor_relu_inplace, tensor_rms_norm, tensor_scale,
+    tensor_silu, tensor_silu_inplace, tensor_softmax, tensor_softmax_fast, tensor_sub, tensor_sum,
 };
 
 // Layer abstractions
@@ -147,38 +132,28 @@ pub use ops::{
 
 // DPS kernels (the hot path)
 pub use ops::{
-    ternary_matvec,             // Packed weights, DPS
-    ternary_matmul_batch,       // Batched, DPS
-    ternary_matvec_kernel,      // Bit-parallel, DPS
-    ternary_matvec_kernel_quantized,  // INT8 input, DPS
+    ternary_matmul_batch,            // Batched, DPS
+    ternary_matvec,                  // Packed weights, DPS
+    ternary_matvec_kernel,           // Bit-parallel, DPS
+    ternary_matvec_kernel_quantized, // INT8 input, DPS
 };
 
 // Legacy API (allocates - for tests/benchmarks only)
-pub use ops::{
-    ternary_matvec_alloc,
-    ternary_matmul_alloc,
-};
+pub use ops::{ternary_matmul_alloc, ternary_matvec_alloc};
 
 // Cross-platform SIMD dispatch
 pub use ops::ternary_matvec_simd_dispatch;
 
 // Quantization
 pub use quantize::{
-    quantize_to_ternary,
-    quantize_to_ternary_sparse,
-    dequantize_from_ternary,
-    QuantStats,
-    QuantizationError,
-    compute_quantization_error,
+    compute_quantization_error, dequantize_from_ternary, quantize_to_ternary,
+    quantize_to_ternary_sparse, QuantStats, QuantizationError,
 };
 
 // Cumulative quantization error analysis
 pub use error_analysis::{
-    LayerConfig,
-    CumulativeQuantError,
-    LayerErrorStats,
+    compute_layer_error_propagation, CumulativeQuantError, LayerConfig, LayerErrorStats,
     NetworkErrorReport,
-    compute_layer_error_propagation,
 };
 
 // ============================================================================
@@ -255,12 +230,11 @@ impl Ternary {
 
 /// Prelude for convenient imports
 pub mod prelude {
-    pub use crate::Arena;
-    pub use crate::tensor::{Tensor, OwnedTensor, QuantizedTensor};
     pub use crate::ops::{
-        TernaryWeight, TernaryWeightKernel,
-        ternary_matvec, ternary_matvec_kernel,
+        ternary_matvec, ternary_matvec_kernel, TernaryWeight, TernaryWeightKernel,
     };
+    pub use crate::tensor::{OwnedTensor, QuantizedTensor, Tensor};
+    pub use crate::Arena;
     pub use crate::Ternary;
 }
 
@@ -285,12 +259,7 @@ mod tests {
 
     #[test]
     fn test_ternary_packing() {
-        let packed = Ternary::pack4(
-            Ternary::Plus,
-            Ternary::Minus,
-            Ternary::Zero,
-            Ternary::Plus,
-        );
+        let packed = Ternary::pack4(Ternary::Plus, Ternary::Minus, Ternary::Zero, Ternary::Plus);
         assert_eq!(packed, 0b01_00_10_01);
 
         let unpacked = Ternary::unpack4(packed);
@@ -313,10 +282,7 @@ mod tests {
         // Complete zero-allocation inference demo using stack arrays
 
         // 1. Load model weights (one-time allocation at startup)
-        let weights = TernaryWeight::from_ternary(
-            &[1, -1, 0, 1, -1, 1, 0, -1, 1],
-            3, 3
-        );
+        let weights = TernaryWeight::from_ternary(&[1, -1, 0, 1, -1, 1, 0, -1, 1], 3, 3);
 
         // 2. Stack-allocated input/output
         let input = [1.0f32, 2.0, 3.0];
