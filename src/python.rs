@@ -1,9 +1,9 @@
-//! PyO3 Python Bindings for ALICE-ML
+//! `PyO3` Python bindings for ALICE-ML
 //!
-//! "Pythonなのにカリカリ" — Python with Crispy Performance
+//! Python with crispy performance:
 //!
 //! - GIL Release: Heavy computation runs GIL-free
-//! - Zero-Copy NumPy: No data copying across FFI boundary
+//! - Zero-Copy `NumPy`: No data copying across FFI boundary
 //! - Batch API: Push loops into Rust (SIMD + Rayon)
 
 use numpy::ndarray::Array2;
@@ -88,8 +88,8 @@ impl PyTernaryWeight {
 
     /// Matrix-vector multiply: y = W * x (GIL released, SIMD)
     ///
-    /// Input shape: (in_features,)
-    /// Output shape: (out_features,)
+    /// Input shape: (`in_features`,)
+    /// Output shape: (`out_features`,)
     fn matvec<'py>(
         &self,
         py: Python<'py>,
@@ -120,8 +120,8 @@ impl PyTernaryWeight {
 
     /// Batched matrix multiply: Y = X @ W^T (GIL released, Rayon + SIMD)
     ///
-    /// Input shape: (batch_size, in_features)
-    /// Output shape: (batch_size, out_features)
+    /// Input shape: (`batch_size`, `in_features`)
+    /// Output shape: (`batch_size`, `out_features`)
     fn matmul_batch<'py>(
         &self,
         py: Python<'py>,
@@ -196,7 +196,7 @@ impl PyTernaryWeightKernel {
         })
     }
 
-    /// Upgrade from TernaryWeight for faster SIMD execution.
+    /// Upgrade from `TernaryWeight` for faster SIMD execution.
     #[staticmethod]
     fn from_weight(weight: &PyTernaryWeight) -> Self {
         Self {
@@ -376,7 +376,7 @@ fn scale<'py>(
     Ok(result.into_pyarray(py))
 }
 
-/// ReLU activation: c = max(a, 0)
+/// `ReLU` activation: c = max(a, 0)
 #[pyfunction]
 fn relu<'py>(
     py: Python<'py>,
@@ -389,7 +389,7 @@ fn relu<'py>(
     Ok(result.into_pyarray(py))
 }
 
-/// Softmax: exp(a_i - max) / sum(exp(a - max))
+/// Softmax: `exp(a_i - max) / sum(exp(a - max))`
 #[pyfunction]
 fn softmax<'py>(
     py: Python<'py>,
@@ -399,7 +399,7 @@ fn softmax<'py>(
         .as_slice()
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let result = py.detach(|| {
-        let max_val = sa.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let max_val = sa.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let exps: Vec<f32> = sa.iter().map(|&x| (x - max_val).exp()).collect();
         let sum: f32 = exps.iter().sum();
         if sum > 0.0 {
@@ -435,7 +435,7 @@ fn max(a: PyReadonlyArray1<'_, f32>) -> PyResult<f32> {
     let s = a
         .as_slice()
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(s.iter().cloned().fold(f32::NEG_INFINITY, f32::max))
+    Ok(s.iter().copied().fold(f32::NEG_INFINITY, f32::max))
 }
 
 #[pyfunction]
@@ -443,7 +443,7 @@ fn min(a: PyReadonlyArray1<'_, f32>) -> PyResult<f32> {
     let s = a
         .as_slice()
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(s.iter().cloned().fold(f32::INFINITY, f32::min))
+    Ok(s.iter().copied().fold(f32::INFINITY, f32::min))
 }
 
 // ============================================================================
@@ -452,7 +452,7 @@ fn min(a: PyReadonlyArray1<'_, f32>) -> PyResult<f32> {
 
 /// Quantize FP32 weights to ternary {-1, 0, +1} (GIL released).
 ///
-/// Uses BitNet b1.58 quantization method.
+/// Uses `BitNet` b1.58 quantization method.
 #[pyfunction]
 fn quantize<'py>(
     py: Python<'py>,
@@ -524,6 +524,10 @@ fn quantization_error(
 // Module
 // ============================================================================
 
+/// ALICE-ML Python module entry point.
+///
+/// # Errors
+/// Returns `PyErr` if module registration fails.
 #[pymodule]
 pub fn alice_ml(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Classes

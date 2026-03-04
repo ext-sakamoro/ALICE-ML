@@ -3,7 +3,7 @@
 //! > "Multiplication is expensive. Addition is all you need."
 //! > "Allocation is a sin. Arena is salvation."
 //!
-//! A radical inference engine based on BitNet b1.58 research that eliminates:
+//! A radical inference engine based on `BitNet` b1.58 research that eliminates:
 //! - **Floating-point multiplication** → Only add/sub with ternary weights {-1, 0, +1}
 //! - **Runtime allocation** → Arena-based memory, DPS (Destination Passing Style)
 //!
@@ -25,7 +25,7 @@
 //! - **Zero Allocation**: All buffers from Arena, DPS everywhere
 //! - **AVX2 SIMD**: 8 floats per cycle with branchless masking
 //! - **INT8 Activations**: Optional quantized path for maximum throughput
-//! - **No Dependencies**: Pure Rust, no_std compatible
+//! - **No Dependencies**: Pure Rust, `no_std` compatible
 //!
 //! # Example
 //!
@@ -79,6 +79,30 @@
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
 
+// テストコードではアサーション内のformat!やf32比較でpedantic警告が出るため抑制
+#![cfg_attr(
+    test,
+    allow(
+        clippy::float_cmp,
+        clippy::uninlined_format_args,
+        clippy::doc_markdown,
+        clippy::cloned_instead_of_copied,
+        clippy::borrow_as_ptr,
+        clippy::ref_as_ptr,
+    )
+)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless,
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::module_name_repetitions,
+    clippy::inline_always,
+    clippy::too_many_lines
+)]
 #![warn(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -99,6 +123,7 @@ pub mod neon;
 pub mod db_bridge;
 
 #[cfg(feature = "pyo3")]
+#[allow(clippy::needless_pass_by_value)] // PyO3 requires pass-by-value for Python types
 pub mod python;
 
 // ============================================================================
@@ -178,6 +203,7 @@ pub enum Ternary {
 impl Ternary {
     /// Convert from i8 (-1, 0, +1)
     #[inline(always)]
+    #[must_use]
     pub const fn from_i8(v: i8) -> Self {
         match v {
             1 => Ternary::Plus,
@@ -188,6 +214,7 @@ impl Ternary {
 
     /// Convert to i8
     #[inline(always)]
+    #[must_use]
     pub const fn to_i8(self) -> i8 {
         match self {
             Ternary::Zero => 0,
@@ -198,12 +225,14 @@ impl Ternary {
 
     /// Pack 4 ternary values into a single byte
     #[inline(always)]
+    #[must_use]
     pub const fn pack4(t0: Ternary, t1: Ternary, t2: Ternary, t3: Ternary) -> u8 {
         (t0 as u8) | ((t1 as u8) << 2) | ((t2 as u8) << 4) | ((t3 as u8) << 6)
     }
 
     /// Unpack 4 ternary values from a byte
     #[inline(always)]
+    #[must_use]
     pub const fn unpack4(byte: u8) -> [Ternary; 4] {
         [
             Self::from_bits(byte & 0b11),
@@ -215,6 +244,7 @@ impl Ternary {
 
     /// Convert from 2-bit encoding
     #[inline(always)]
+    #[must_use]
     pub const fn from_bits(bits: u8) -> Self {
         match bits {
             0b01 => Ternary::Plus,

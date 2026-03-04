@@ -18,6 +18,7 @@ pub struct Arena {
 
 impl Arena {
     /// Create arena with specified capacity (bytes)
+    #[must_use]
     pub fn new(capacity: usize) -> Self {
         Self {
             buffer: vec![0u8; capacity],
@@ -43,7 +44,7 @@ impl Arena {
         // SAFETY: aligned_offset is within buffer bounds (checked above). The pointer arithmetic
         // stays within the allocated Vec<u8> region. The cast to *mut T is valid because
         // aligned_offset satisfies T's alignment requirement (computed via align_of::<T>()).
-        let ptr = unsafe { self.buffer.as_mut_ptr().add(aligned_offset) as *mut T };
+        let ptr = unsafe { self.buffer.as_mut_ptr().add(aligned_offset).cast::<T>() };
 
         self.offset = aligned_offset + size;
 
@@ -71,18 +72,21 @@ impl Arena {
 
     /// Current usage in bytes
     #[inline]
+    #[must_use]
     pub fn used(&self) -> usize {
         self.offset
     }
 
     /// Total capacity in bytes
     #[inline]
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.buffer.len()
     }
 
     /// Remaining capacity in bytes
     #[inline]
+    #[must_use]
     pub fn remaining(&self) -> usize {
         self.buffer.len() - self.offset
     }

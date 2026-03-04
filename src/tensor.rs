@@ -32,6 +32,10 @@ impl<'a> Tensor<'a> {
     ///
     /// # Safety
     /// Caller must ensure `data` is properly sized for `shape`.
+    ///
+    /// # Panics
+    /// Panics if `shape.len()` exceeds `MAX_DIMS` or if `data.len()` does not equal the product
+    /// of all shape dimensions.
     pub fn from_arena(data: &'a mut [f32], shape: &[usize]) -> Self {
         assert!(shape.len() <= MAX_DIMS, "Too many dimensions");
 
@@ -68,30 +72,35 @@ impl<'a> Tensor<'a> {
 
     /// Get shape slice
     #[inline]
+    #[must_use]
     pub fn shape(&self) -> &[usize] {
         &self.shape[..self.ndim]
     }
 
     /// Get number of dimensions
     #[inline]
+    #[must_use]
     pub fn ndim(&self) -> usize {
         self.ndim
     }
 
     /// Total number of elements
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
     /// Check if empty
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
     /// Get raw data slice (immutable)
     #[inline]
+    #[must_use]
     pub fn data(&self) -> &[f32] {
         self.data
     }
@@ -104,6 +113,7 @@ impl<'a> Tensor<'a> {
 
     /// Get element at flat index
     #[inline]
+    #[must_use]
     pub fn get_flat(&self, idx: usize) -> f32 {
         self.data[idx]
     }
@@ -116,6 +126,7 @@ impl<'a> Tensor<'a> {
 
     /// Get element at multi-dimensional index
     #[inline]
+    #[must_use]
     pub fn get(&self, indices: &[usize]) -> f32 {
         let idx = self.flat_index(indices);
         self.data[idx]
@@ -217,7 +228,7 @@ pub fn tensor_scale(a: &Tensor, scalar: f32, out: &mut Tensor) {
     }
 }
 
-/// ReLU activation: out = max(a, 0) — branchless
+/// `ReLU` activation: out = max(a, 0) — branchless
 #[inline]
 pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
     debug_assert_eq!(a.shape(), out.shape());
@@ -252,7 +263,7 @@ pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
     }
 }
 
-/// ReLU in-place — branchless
+/// `ReLU` in-place — branchless
 #[inline]
 pub fn tensor_relu_inplace(a: &mut Tensor) {
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
@@ -287,6 +298,9 @@ pub fn tensor_relu_inplace(a: &mut Tensor) {
 }
 
 /// Softmax over last dimension: out = softmax(a)
+///
+/// # Panics
+/// Panics if `a` has zero dimensions (`ndim == 0`).
 #[inline]
 pub fn tensor_softmax(a: &Tensor, out: &mut Tensor) {
     assert!(a.ndim > 0, "tensor_softmax: input tensor has ndim=0");
@@ -302,7 +316,7 @@ pub fn tensor_softmax(a: &Tensor, out: &mut Tensor) {
         let out_slice = &mut out.data[start..end];
 
         // Find max for numerical stability
-        let max_val = in_slice.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let max_val = in_slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
 
         // Exp and sum
         let mut sum = 0.0f32;
@@ -332,6 +346,7 @@ pub fn tensor_softmax(a: &Tensor, out: &mut Tensor) {
 /// and AVX2 is available at runtime, falling back to a scalar accumulation
 /// for the tail and on non-AVX2 / non-x86 targets.
 #[inline]
+#[must_use]
 pub fn tensor_sum(a: &Tensor) -> f32 {
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
     if crate::ops::has_avx2() {
@@ -367,6 +382,7 @@ pub fn tensor_sum(a: &Tensor) -> f32 {
 
 /// Mean of all elements
 #[inline]
+#[must_use]
 pub fn tensor_mean(a: &Tensor) -> f32 {
     tensor_sum(a) / a.data.len() as f32
 }
@@ -411,7 +427,7 @@ pub fn tensor_max(a: &Tensor) -> f32 {
         }
     }
 
-    a.data.iter().cloned().fold(f32::NEG_INFINITY, f32::max)
+    a.data.iter().copied().fold(f32::NEG_INFINITY, f32::max)
 }
 
 /// Minimum element
@@ -454,7 +470,7 @@ pub fn tensor_min(a: &Tensor) -> f32 {
         }
     }
 
-    a.data.iter().cloned().fold(f32::INFINITY, f32::min)
+    a.data.iter().copied().fold(f32::INFINITY, f32::min)
 }
 
 /// Copy data from source to destination
@@ -484,7 +500,7 @@ fn fast_exp(x: f32) -> f32 {
     let x = x.clamp(-87.0, 88.0);
     // Schraudolph's approximation: bit-cast integer to float
     // 12102203.0 ~= 2^23 / ln(2);  1065353216 = 127 << 23 (exponent bias)
-    let a = (12102203.0_f32.mul_add(x, 1065353216.0_f32)) as i32;
+    let a = (12_102_203.0_f32.mul_add(x, 1_065_353_216.0_f32)) as i32;
     f32::from_bits(a as u32)
 }
 
@@ -497,6 +513,9 @@ fn fast_exp(x: f32) -> f32 {
 ///
 /// Use this when throughput matters more than bit-exact accuracy, e.g. during
 /// speculative decoding, beam search ranking, or attention score normalisation.
+///
+/// # Panics
+/// Panics if `a` has zero dimensions (`ndim == 0`).
 #[inline]
 pub fn tensor_softmax_fast(a: &Tensor, out: &mut Tensor) {
     assert!(a.ndim > 0, "tensor_softmax_fast: input tensor has ndim=0");
@@ -540,7 +559,7 @@ pub fn tensor_softmax_fast(a: &Tensor, out: &mut Tensor) {
 // Activation Functions: GELU and SiLU (Swish)
 // ============================================================================
 
-/// GELU activation (fast approximation): 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+/// GELU activation (fast approximation): 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + `0.044_715` * x^3)))
 ///
 /// Uses the tanh-based approximation: tanh(x) = (e^2x - 1)/(e^2x + 1)
 /// DPS pattern — writes to pre-allocated output. ZERO ALLOCATION.
@@ -551,7 +570,7 @@ pub fn tensor_gelu(a: &Tensor, out: &mut Tensor) {
     let sqrt_2_over_pi: f32 = 0.797_884_6; // sqrt(2/pi)
     for i in 0..len {
         let x = a.data[i];
-        let inner = sqrt_2_over_pi * (x + 0.044715 * x * x * x);
+        let inner = sqrt_2_over_pi * (x + 0.044_715 * x * x * x);
         // tanh(x) = (e^2x - 1)/(e^2x + 1)
         let exp2x = (2.0 * inner).exp();
         let tanh_val = (exp2x - 1.0) / (exp2x + 1.0);
@@ -565,14 +584,14 @@ pub fn tensor_gelu_inplace(a: &mut Tensor) {
     let sqrt_2_over_pi: f32 = 0.797_884_6;
     for i in 0..a.data.len() {
         let x = a.data[i];
-        let inner = sqrt_2_over_pi * (x + 0.044715 * x * x * x);
+        let inner = sqrt_2_over_pi * (x + 0.044_715 * x * x * x);
         let exp2x = (2.0 * inner).exp();
         let tanh_val = (exp2x - 1.0) / (exp2x + 1.0);
         a.data[i] = 0.5 * x * (1.0 + tanh_val);
     }
 }
 
-/// SiLU (Swish) activation: x * sigmoid(x) = x / (1 + exp(-x))
+/// `SiLU` (Swish) activation: x * sigmoid(x) = x / (1 + exp(-x))
 ///
 /// DPS pattern — writes to pre-allocated output. ZERO ALLOCATION.
 #[inline]
@@ -584,7 +603,7 @@ pub fn tensor_silu(a: &Tensor, out: &mut Tensor) {
     }
 }
 
-/// SiLU in-place
+/// `SiLU` in-place
 #[inline]
 pub fn tensor_silu_inplace(a: &mut Tensor) {
     for i in 0..a.data.len() {
@@ -597,7 +616,7 @@ pub fn tensor_silu_inplace(a: &mut Tensor) {
 // Normalization: RMSNorm and LayerNorm
 // ============================================================================
 
-/// RMSNorm: x / sqrt(mean(x^2) + eps) * weight
+/// `RMSNorm`: x / sqrt(mean(x^2) + eps) * weight
 ///
 /// DPS style — weight can be None for unweighted normalization.
 /// ZERO ALLOCATION.
@@ -628,7 +647,7 @@ pub fn tensor_rms_norm(a: &Tensor, weight: Option<&Tensor>, eps: f32, out: &mut 
     }
 }
 
-/// LayerNorm: (x - mean) / sqrt(var + eps) * weight + bias
+/// `LayerNorm`: (x - mean) / sqrt(var + eps) * weight + bias
 ///
 /// DPS style — weight and bias are both optional.
 /// ZERO ALLOCATION.
@@ -740,6 +759,9 @@ pub struct QuantizedTensor {
 
 impl QuantizedTensor {
     /// Quantize f32 slice to INT8
+    ///
+    /// # Panics
+    /// Panics if `input.len()` does not equal the product of all shape dimensions.
     pub fn from_f32_slice(input: &[f32], shape: &[usize]) -> Self {
         let total: usize = shape.iter().product();
         assert_eq!(input.len(), total);
@@ -771,6 +793,10 @@ impl QuantizedTensor {
     }
 
     /// Create from raw INT8 data
+    ///
+    /// # Panics
+    /// Panics if `data.len()` does not equal the product of all shape dimensions.
+    #[must_use]
     pub fn from_i8(data: Vec<i8>, scale: f32, shape: &[usize]) -> Self {
         let total: usize = shape.iter().product();
         assert_eq!(data.len(), total);
@@ -798,30 +824,35 @@ impl QuantizedTensor {
 
     /// Get raw INT8 data
     #[inline]
+    #[must_use]
     pub fn data_i8(&self) -> &[i8] {
         &self.data
     }
 
     /// Get scale factor
     #[inline]
+    #[must_use]
     pub fn scale(&self) -> f32 {
         self.scale
     }
 
     /// Get shape slice
     #[inline]
+    #[must_use]
     pub fn shape(&self) -> &[usize] {
         &self.shape[..self.ndim]
     }
 
     /// Total number of elements
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
     /// Check if empty
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
@@ -844,6 +875,11 @@ pub struct OwnedTensor {
 
 impl OwnedTensor {
     /// Create from slice (allocates!)
+    ///
+    /// # Panics
+    /// Panics if `shape.len()` exceeds `MAX_DIMS` or if `data.len()` does not equal the product
+    /// of all shape dimensions.
+    #[must_use]
     pub fn from_slice(data: &[f32], shape: &[usize]) -> Self {
         assert!(shape.len() <= MAX_DIMS);
         let total: usize = shape.iter().product();
@@ -870,12 +906,14 @@ impl OwnedTensor {
 
     /// Get shape
     #[inline]
+    #[must_use]
     pub fn shape(&self) -> &[usize] {
         &self.shape[..self.ndim]
     }
 
     /// Get data
     #[inline]
+    #[must_use]
     pub fn data(&self) -> &[f32] {
         &self.data
     }
@@ -888,18 +926,21 @@ impl OwnedTensor {
 
     /// Total elements
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
     /// Check if empty
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
     /// Get element at index
     #[inline]
+    #[must_use]
     pub fn get(&self, indices: &[usize]) -> f32 {
         let mut idx = 0;
         for (i, &dim_idx) in indices.iter().enumerate() {
@@ -1372,7 +1413,7 @@ mod tests {
     }
 
     // ============================================================================
-    // カリカリ (hardware-native) SIMD enhancement tests
+    // Hardware-native SIMD enhancement tests
     // ============================================================================
 
     // ---- fast_exp accuracy ----
@@ -1519,7 +1560,7 @@ mod tests {
     #[test]
     fn test_tensor_sum_correctness() {
         // Use length 17 to exercise both the 8-wide chunks and the tail
-        let mut a_data: Vec<f32> = (1..=17).map(|i| i as f32).collect();
+        let a_data: Vec<f32> = (1..=17).map(|i| i as f32).collect();
         let mut a_arr = [0.0f32; 17];
         a_arr.copy_from_slice(&a_data);
 

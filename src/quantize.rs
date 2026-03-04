@@ -1,6 +1,6 @@
 //! Quantization: FP32 → Ternary {-1, 0, +1}
 //!
-//! Based on BitNet b1.58 research: weights can be quantized to 1.58 bits
+//! Based on `BitNet` b1.58 research: weights can be quantized to 1.58 bits
 //! with minimal accuracy loss when using learned scaling factors.
 //!
 //! Author: Moroya Sakamoto
@@ -29,6 +29,7 @@ pub struct QuantStats {
 
 impl QuantStats {
     /// Sparsity ratio (fraction of zero weights)
+    #[must_use]
     pub fn sparsity(&self) -> f32 {
         let total = self.plus_count + self.minus_count + self.zero_count;
         if total == 0 {
@@ -39,6 +40,7 @@ impl QuantStats {
     }
 
     /// Effective bits per weight (log2(non-zero states))
+    #[must_use]
     pub fn effective_bits(&self) -> f32 {
         // If sparsity is high, effective bits are lower
         // Full ternary = log2(3) ≈ 1.58 bits
@@ -70,9 +72,9 @@ impl QuantStats {
 
 /// Quantize FP32 weights to Ternary
 ///
-/// Algorithm (BitNet b1.58 style):
+/// Algorithm (`BitNet` b1.58 style):
 /// 1. Compute scale factor: γ = mean(|W|)
-/// 2. Quantize: W_t = sign(W) * round(|W| / γ) clamped to {-1, 0, +1}
+/// 2. Quantize: `W_t` = sign(W) * round(|W| / γ) clamped to {-1, 0, +1}
 ///
 /// # Arguments
 /// * `weights` - FP32 weight matrix (row-major)
@@ -80,7 +82,11 @@ impl QuantStats {
 /// * `in_features` - Number of input features (columns)
 ///
 /// # Returns
-/// Tuple of (TernaryWeight, QuantStats)
+/// Tuple of (`TernaryWeight`, `QuantStats`)
+///
+/// # Panics
+/// Panics if `out_features * in_features` overflows `usize` or does not equal `weights.len()`.
+#[must_use]
 pub fn quantize_to_ternary(
     weights: &[f32],
     out_features: usize,
@@ -150,6 +156,10 @@ pub fn quantize_to_ternary(
 /// Quantize with custom threshold (for sparse models)
 ///
 /// Values with |w| < threshold * scale are set to 0.
+///
+/// # Panics
+/// Panics if `out_features * in_features` overflows `usize` or does not equal `weights.len()`.
+#[must_use]
 pub fn quantize_to_ternary_sparse(
     weights: &[f32],
     out_features: usize,
@@ -226,6 +236,7 @@ pub fn quantize_to_ternary_sparse(
 /// Dequantize ternary weights back to FP32
 ///
 /// For debugging and comparison purposes.
+#[must_use]
 pub fn dequantize_from_ternary(weights: &TernaryWeight) -> Vec<f32> {
     let mut result = vec![0.0f32; weights.out_features() * weights.in_features()];
     let scale = weights.scale();
@@ -241,6 +252,10 @@ pub fn dequantize_from_ternary(weights: &TernaryWeight) -> Vec<f32> {
 }
 
 /// Compute quantization error metrics
+///
+/// # Panics
+/// Panics if the dequantized length does not equal `original.len()`.
+#[must_use]
 pub fn compute_quantization_error(
     original: &[f32],
     quantized: &TernaryWeight,

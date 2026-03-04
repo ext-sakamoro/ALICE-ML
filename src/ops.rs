@@ -36,6 +36,10 @@ pub struct TernaryWeight {
 
 impl TernaryWeight {
     /// Create from ternary values (-1, 0, +1)
+    ///
+    /// # Panics
+    /// Panics if `out_features * in_features` overflows `usize` or does not equal `values.len()`.
+    #[must_use]
     pub fn from_ternary(values: &[i8], out_features: usize, in_features: usize) -> Self {
         let total = out_features
             .checked_mul(in_features)
@@ -63,6 +67,11 @@ impl TernaryWeight {
     }
 
     /// Create from packed bytes with scale
+    ///
+    /// # Panics
+    /// Panics if `out_features * in_features` overflows `usize` or `packed` is shorter than
+    /// the required packed length (`ceil(out_features * in_features / 4)` bytes).
+    #[must_use]
     pub fn from_packed(
         packed: Vec<u8>,
         out_features: usize,
@@ -89,6 +98,7 @@ impl TernaryWeight {
 
     /// Get weight at position
     #[inline]
+    #[must_use]
     pub fn get(&self, row: usize, col: usize) -> Ternary {
         let flat_idx = row * self.in_features + col;
         let byte_idx = flat_idx / 4;
@@ -99,36 +109,42 @@ impl TernaryWeight {
 
     /// Number of output features (rows)
     #[inline]
+    #[must_use]
     pub fn out_features(&self) -> usize {
         self.out_features
     }
 
     /// Number of input features (columns)
     #[inline]
+    #[must_use]
     pub fn in_features(&self) -> usize {
         self.in_features
     }
 
     /// Scale factor applied after accumulation
     #[inline]
+    #[must_use]
     pub fn scale(&self) -> f32 {
         self.scale
     }
 
     /// Raw packed bytes (4 ternary values per byte)
     #[inline]
+    #[must_use]
     pub fn packed(&self) -> &[u8] {
         &self.packed
     }
 
     /// Memory footprint of packed weights in bytes
     #[inline]
+    #[must_use]
     pub fn memory_bytes(&self) -> usize {
         self.packed.len()
     }
 
     /// Compression ratio vs FP32 (e.g. 16x for ternary)
     #[inline]
+    #[must_use]
     pub fn compression_ratio(&self) -> f32 {
         if self.packed.is_empty() {
             return 0.0;
@@ -170,11 +186,19 @@ pub struct TernaryWeightKernel {
 
 impl TernaryWeightKernel {
     /// Create from ternary values
+    ///
+    /// # Panics
+    /// Panics if `out_features * in_features` overflows `usize` or does not equal `values.len()`.
+    #[must_use]
     pub fn from_ternary(values: &[i8], out_features: usize, in_features: usize) -> Self {
         Self::from_ternary_scaled(values, out_features, in_features, 1.0)
     }
 
     /// Create with custom scale
+    ///
+    /// # Panics
+    /// Panics if `out_features * in_features` overflows `usize` or does not equal `values.len()`.
+    #[must_use]
     pub fn from_ternary_scaled(
         values: &[i8],
         out_features: usize,
@@ -216,7 +240,8 @@ impl TernaryWeightKernel {
         }
     }
 
-    /// Convert from packed TernaryWeight
+    /// Convert from packed `TernaryWeight`
+    #[must_use]
     pub fn from_packed_weight(weights: &TernaryWeight) -> Self {
         let out_features = weights.out_features();
         let in_features = weights.in_features();
@@ -252,30 +277,35 @@ impl TernaryWeightKernel {
 
     /// Number of output features (rows)
     #[inline]
+    #[must_use]
     pub fn out_features(&self) -> usize {
         self.out_features
     }
 
     /// Number of input features (columns)
     #[inline]
+    #[must_use]
     pub fn in_features(&self) -> usize {
         self.in_features
     }
 
     /// Scale factor applied after accumulation
     #[inline]
+    #[must_use]
     pub fn scale(&self) -> f32 {
         self.scale
     }
 
     /// Memory footprint of bit-parallel weights in bytes
     #[inline]
+    #[must_use]
     pub fn memory_bytes(&self) -> usize {
         (self.plus_bits.len() + self.minus_bits.len()) * 4
     }
 
     /// Compression ratio vs FP32 (e.g. 8x for bit-parallel)
     #[inline]
+    #[must_use]
     pub fn compression_ratio(&self) -> f32 {
         let mem = self.memory_bytes();
         if mem == 0 {
@@ -287,18 +317,21 @@ impl TernaryWeightKernel {
 
     /// Raw +1 bitplane (1 bit per weight, 32 per u32)
     #[inline]
+    #[must_use]
     pub fn plus_bits(&self) -> &[u32] {
         &self.plus_bits
     }
 
     /// Raw -1 bitplane (1 bit per weight, 32 per u32)
     #[inline]
+    #[must_use]
     pub fn minus_bits(&self) -> &[u32] {
         &self.minus_bits
     }
 
     /// Number of u32 words per row
     #[inline]
+    #[must_use]
     pub fn words_per_row(&self) -> usize {
         self.words_per_row
     }
@@ -313,9 +346,9 @@ impl TernaryWeightKernel {
 /// Writes result directly to `output`. No allocation.
 ///
 /// # Arguments
-/// * `input` - Input vector (length = in_features)
+/// * `input` - Input vector (length = `in_features`)
 /// * `weights` - Packed ternary weights
-/// * `output` - Pre-allocated output buffer (length = out_features)
+/// * `output` - Pre-allocated output buffer (length = `out_features`)
 #[inline]
 pub fn ternary_matvec(input: &[f32], weights: &TernaryWeight, output: &mut [f32]) {
     debug_assert_eq!(input.len(), weights.in_features());
@@ -353,12 +386,12 @@ pub fn ternary_matvec(input: &[f32], weights: &TernaryWeight, output: &mut [f32]
     }
 }
 
-/// Ternary MatMul with batched input (DPS)
+/// Ternary `MatMul` with batched input (DPS)
 ///
 /// # Arguments
-/// * `input` - Input tensor data (batch_size × in_features, row-major)
+/// * `input` - Input tensor data (`batch_size` × `in_features`, row-major)
 /// * `weights` - Ternary weights
-/// * `output` - Pre-allocated output (batch_size × out_features)
+/// * `output` - Pre-allocated output (`batch_size` × `out_features`)
 /// * `batch_size` - Number of input vectors
 #[inline]
 pub fn ternary_matmul_batch(
@@ -483,6 +516,7 @@ pub fn ternary_matvec_kernel_quantized(
 /// Legacy API: allocates output tensor
 ///
 /// **WARNING**: Allocates! Use DPS version in production.
+#[must_use]
 pub fn ternary_matvec_alloc(input: &Tensor, weights: &TernaryWeight) -> crate::tensor::OwnedTensor {
     let mut output = vec![0.0f32; weights.out_features()];
     ternary_matvec(input.data(), weights, &mut output);
@@ -490,6 +524,11 @@ pub fn ternary_matvec_alloc(input: &Tensor, weights: &TernaryWeight) -> crate::t
 }
 
 /// Legacy API: batched matmul with allocation
+///
+/// # Panics
+/// Panics if the input tensor has more than 2 dimensions, or if `in_features` does not match
+/// `weights.in_features()`.
+#[must_use]
 pub fn ternary_matmul_alloc(input: &Tensor, weights: &TernaryWeight) -> crate::tensor::OwnedTensor {
     let shape = input.shape();
 
@@ -700,7 +739,7 @@ pub(crate) fn has_avx2() -> bool {
 
 /// Dispatch to the best available SIMD kernel for the current platform.
 ///
-/// - x86_64 + AVX2: 8-wide SIMD
+/// - `x86_64` + AVX2: 8-wide SIMD
 /// - aarch64 + NEON: 4-wide SIMD
 /// - Fallback: scalar kernel
 #[inline]
@@ -734,22 +773,24 @@ pub fn ternary_matvec_simd_dispatch(
 /// Extract +1 mask from packed byte (used in tests and bitmask kernel)
 #[inline(always)]
 #[allow(dead_code)]
+#[must_use]
 pub fn extract_plus_mask(byte: u8) -> u8 {
-    let b0 = (byte & 0b00000011) == 0b01;
-    let b1 = (byte & 0b00001100) == 0b0100;
-    let b2 = (byte & 0b00110000) == 0b010000;
-    let b3 = (byte & 0b11000000) == 0b01000000;
+    let b0 = (byte & 0b0000_0011) == 0b01;
+    let b1 = (byte & 0b0000_1100) == 0b0100;
+    let b2 = (byte & 0b0011_0000) == 0b01_0000;
+    let b3 = (byte & 0b1100_0000) == 0b0100_0000;
     (b0 as u8) | ((b1 as u8) << 1) | ((b2 as u8) << 2) | ((b3 as u8) << 3)
 }
 
 /// Extract -1 mask from packed byte
 #[inline(always)]
 #[allow(dead_code)]
+#[must_use]
 pub fn extract_minus_mask(byte: u8) -> u8 {
-    let b0 = (byte & 0b00000011) == 0b10;
-    let b1 = (byte & 0b00001100) == 0b1000;
-    let b2 = (byte & 0b00110000) == 0b100000;
-    let b3 = (byte & 0b11000000) == 0b10000000;
+    let b0 = (byte & 0b0000_0011) == 0b10;
+    let b1 = (byte & 0b0000_1100) == 0b1000;
+    let b2 = (byte & 0b0011_0000) == 0b10_0000;
+    let b3 = (byte & 0b1100_0000) == 0b1000_0000;
     (b0 as u8) | ((b1 as u8) << 1) | ((b2 as u8) << 2) | ((b3 as u8) << 3)
 }
 
@@ -999,7 +1040,7 @@ mod tests {
     }
 
     // ============================================================================
-    // カリカリ enhancement tests
+    // SIMD and alignment enhancement tests
     // ============================================================================
 
     /// has_avx2() must be idempotent: calling it multiple times returns the same value

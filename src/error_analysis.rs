@@ -3,7 +3,7 @@
 //! Tracks how ternary quantization error accumulates through the layers of a
 //! deep network. Two distinct error channels are modelled:
 //!
-//! - **MatMul channel** – error is amplified at every layer because each
+//! - **`MatMul` channel** – error is amplified at every layer because each
 //!   weight matrix multiplies the already-perturbed activations.
 //! - **Residual channel** – skip connections add error additively, so the
 //!   accumulated perturbation grows more slowly than in plain feed-forward
@@ -11,14 +11,14 @@
 //!
 //! # Key formulae
 //!
-//! Single-layer relative Frobenius error (ε_i):
+//! Single-layer relative Frobenius error (`ε_i)`:
 //!
 //! ```text
 //! ε_i = ||W - Q(W)||_F / ||W||_F
 //! ```
 //!
-//! For a ternary weight matrix whose entries are iid with variance σ_w² and
-//! scale γ = E[|W|] ≈ √(2/π) · σ_w (for a zero-mean Gaussian):
+//! For a ternary weight matrix whose entries are iid with variance `σ_w²` and
+//! scale γ = E[|W|] ≈ √(2/π) · `σ_w` (for a zero-mean Gaussian):
 //!
 //! ```text
 //! ε_i ≈ sqrt(1 - 2/π)        (theoretical for Gaussian weights)
@@ -58,10 +58,10 @@ pub struct LayerConfig {
     pub fan_in: usize,
     /// Number of output features (rows of the weight matrix).
     pub fan_out: usize,
-    /// Variance of the FP32 weights **before** quantization (σ_w²).
+    /// Variance of the FP32 weights **before** quantization (`σ_w²`).
     ///
     /// For a Xavier-initialised layer with `fan_in` inputs this is typically
-    /// `1.0 / fan_in as f32`.  For a trained BitNet layer the empirical
+    /// `1.0 / fan_in as f32`.  For a trained `BitNet` layer the empirical
     /// variance of the original weights should be supplied.
     pub weight_variance: f32,
     /// Fraction of weights that are exactly zero after quantization
@@ -75,6 +75,7 @@ pub struct LayerConfig {
 
 impl LayerConfig {
     /// Construct a dense matmul layer with Xavier weight variance.
+    #[must_use]
     pub fn dense(fan_in: usize, fan_out: usize) -> Self {
         Self {
             fan_in,
@@ -86,6 +87,7 @@ impl LayerConfig {
     }
 
     /// Construct a residual (skip-connected) layer.
+    #[must_use]
     pub fn residual(fan_in: usize, fan_out: usize) -> Self {
         Self {
             has_residual: true,
@@ -94,6 +96,7 @@ impl LayerConfig {
     }
 
     /// Construct a layer with explicit weight variance and sparsity.
+    #[must_use]
     pub fn with_stats(fan_in: usize, fan_out: usize, weight_variance: f32, sparsity: f32) -> Self {
         Self {
             fan_in,
@@ -126,7 +129,8 @@ pub struct CumulativeQuantError {
 }
 
 impl CumulativeQuantError {
-    /// Initialise with unit activations (σ_act = 1.0) and no error.
+    /// Initialise with unit activations (`σ_act` = 1.0) and no error.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             error_product: 1.0,
@@ -138,9 +142,9 @@ impl CumulativeQuantError {
     /// Integrate one layer's local error `epsilon` into the running state.
     ///
     /// - `epsilon`     – relative Frobenius error of this layer (0..1).
-    /// - `fan_in`      – number of inputs (used for σ_out formula).
+    /// - `fan_in`      – number of inputs (used for `σ_out` formula).
     /// - `sigma_w`     – weight std-dev of this layer.
-    /// - `has_residual`– if true, use additive error model for σ_act.
+    /// - `has_residual`– if true, use additive error model for `σ_act`.
     pub fn accumulate(&mut self, epsilon: f64, fan_in: usize, sigma_w: f64, has_residual: bool) {
         // Multiplicative error product
         self.error_product *= 1.0 + epsilon;
@@ -161,9 +165,10 @@ impl CumulativeQuantError {
 
     /// Total accumulated error: `error_product - 1`.
     ///
-    /// This equals `Π(1 + ε_i) - 1`.  For small ε_i it is approximately
-    /// Σ ε_i (first-order), but for 100+ layers the multiplicative growth
+    /// This equals `Π(1 + ε_i) - 1`.  For small `ε_i` it is approximately
+    /// Σ `ε_i` (first-order), but for 100+ layers the multiplicative growth
     /// becomes significant.
+    #[must_use]
     pub fn total_error(&self) -> f64 {
         self.error_product - 1.0
     }
@@ -221,11 +226,13 @@ pub struct NetworkErrorReport {
 
 impl NetworkErrorReport {
     /// True if the total accumulated error is below `threshold`.
+    #[must_use]
     pub fn is_within_bounds(&self, threshold: f64) -> bool {
         self.total_error <= threshold
     }
 
     /// Per-layer local errors as a plain `Vec<f64>`.
+    #[must_use]
     pub fn local_errors(&self) -> Vec<f64> {
         self.layers.iter().map(|s| s.local_error).collect()
     }
@@ -239,12 +246,12 @@ impl NetworkErrorReport {
 ///
 /// # Algorithm
 ///
-/// For each layer *i* with weight variance σ_w²:
+/// For each layer *i* with weight variance `σ_w²`:
 ///
-/// 1. Derive σ_w = sqrt(weight_variance).
-/// 2. For ternary quantization with scale γ = E[|W|] ≈ √(2/π) · σ_w:
-///    - E[|W - Q(W)|²] = σ_w² · (1 - 2/π)  (Gaussian approximation).
-///    - ||W - Q(W)||_F² / ||W||_F²  = (1 - 2/π)  independent of σ_w.
+/// 1. Derive `σ_w` = `sqrt(weight_variance)`.
+/// 2. For ternary quantization with scale γ = E[|W|] ≈ √(2/π) · `σ_w`:
+///    - E[|W - Q(W)|²] = `σ_w²` · (1 - 2/π)  (Gaussian approximation).
+///    - ||W - Q(W)||_F² / ||W||_F²  = (1 - 2/π)  independent of `σ_w`.
 ///    - Sparsity correction: zero-weights contribute fully to error, so
 ///      effective ε² ≈ (1 - 2/π) + sparsity · (2/π).
 /// 3. Accumulate via `CumulativeQuantError::accumulate`.
@@ -257,6 +264,7 @@ impl NetworkErrorReport {
 ///
 /// A `NetworkErrorReport` with per-layer `LayerErrorStats` and summary
 /// metrics.
+#[must_use]
 pub fn compute_layer_error_propagation(layers: &[LayerConfig]) -> NetworkErrorReport {
     // Constant: for a zero-mean Gaussian, the fraction of squared error
     // introduced by ternary rounding is (1 - 2/π).

@@ -8,6 +8,7 @@ use std::io;
 use std::path::Path;
 
 /// Training metrics sink backed by ALICE-DB.
+#[allow(clippy::struct_field_names)] // Fields are semantically distinct DB handles
 pub struct TrainingMetricsSink {
     loss_db: AliceDB,
     accuracy_db: AliceDB,
@@ -16,6 +17,9 @@ pub struct TrainingMetricsSink {
 
 impl TrainingMetricsSink {
     /// Open training metrics databases.
+    ///
+    /// # Errors
+    /// Returns `io::Error` if any database directory cannot be created or opened.
     pub fn open<P: AsRef<Path>>(dir: P) -> io::Result<Self> {
         let dir = dir.as_ref();
         std::fs::create_dir_all(dir)?;
@@ -27,6 +31,9 @@ impl TrainingMetricsSink {
     }
 
     /// Record training step metrics.
+    ///
+    /// # Errors
+    /// Returns `io::Error` if any database write fails.
     pub fn record_step(
         &self,
         step: i64,
@@ -41,31 +48,49 @@ impl TrainingMetricsSink {
     }
 
     /// Record loss only.
+    ///
+    /// # Errors
+    /// Returns `io::Error` if the database write fails.
     pub fn record_loss(&self, step: i64, loss: f32) -> io::Result<()> {
         self.loss_db.put(step, loss)
     }
 
     /// Batch record losses.
+    ///
+    /// # Errors
+    /// Returns `io::Error` if the batch write fails.
     pub fn record_loss_batch(&self, data: &[(i64, f32)]) -> io::Result<()> {
         self.loss_db.put_batch(data)
     }
 
     /// Query loss history.
+    ///
+    /// # Errors
+    /// Returns `io::Error` if the database scan fails.
     pub fn query_loss(&self, start: i64, end: i64) -> io::Result<Vec<(i64, f32)>> {
         self.loss_db.scan(start, end)
     }
 
     /// Query accuracy history.
+    ///
+    /// # Errors
+    /// Returns `io::Error` if the database scan fails.
     pub fn query_accuracy(&self, start: i64, end: i64) -> io::Result<Vec<(i64, f32)>> {
         self.accuracy_db.scan(start, end)
     }
 
     /// Query sparsity history.
+    ///
+    /// # Errors
+    /// Returns `io::Error` if the database scan fails.
     pub fn query_sparsity(&self, start: i64, end: i64) -> io::Result<Vec<(i64, f32)>> {
         self.sparsity_db.scan(start, end)
     }
 
     /// Flush all databases.
+    ///
+    /// # Errors
+    /// Returns `io::Error` if any database flush fails.
     pub fn flush(&self) -> io::Result<()> {
         self.loss_db.flush()?;
         self.accuracy_db.flush()?;

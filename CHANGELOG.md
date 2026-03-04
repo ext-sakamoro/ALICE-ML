@@ -16,4 +16,7 @@ All notable changes to ALICE-ML will be documented in this file.
 - `db_bridge` — ALICE-DB training metrics persistence (feature-gated: `db`)
 - Feature flags: `std`, `simd`, `neon`, `parallel`, `pyo3`, `db`
 - `no_std` + `alloc` support
-- 93 unit tests + 2 doc-tests
+- 93 unit tests (100 with all features) + 2 doc-tests
+- CI/CD (GitHub Actions: test, clippy pedantic, fmt, doc)
+- `#[must_use]` on all public query functions
+- `# Errors` doc sections on all `Result`-returning functions

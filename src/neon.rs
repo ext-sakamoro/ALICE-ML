@@ -5,9 +5,10 @@
 //!
 //! Author: Moroya Sakamoto
 
-use super::*;
+use super::TernaryWeightKernel;
 
 #[cfg(target_arch = "aarch64")]
+#[allow(clippy::wildcard_imports)] // NEON intrinsics are too numerous to list explicitly
 use core::arch::aarch64::*;
 
 /// Build 4-element mask from bitfield (NEON Edition)
@@ -16,14 +17,14 @@ use core::arch::aarch64::*;
 /// Zero branches, zero scalar-to-vector transitions.
 ///
 /// Algorithm:
-/// 1. Broadcast mask_bits to all 4 lanes
+/// 1. Broadcast `mask_bits` to all 4 lanes
 /// 2. AND with bit positions [1, 2, 4, 8]
 /// 3. Compare equal → 0xFFFFFFFF where bit was set
 #[cfg(target_arch = "aarch64")]
 #[inline(always)]
 unsafe fn build_mask_4(bits: u32, offset: usize) -> uint32x4_t {
     // Extract 4 bits and broadcast to all lanes
-    let mask_bits = ((bits >> offset) & 0x0F) as u32;
+    let mask_bits = (bits >> offset) & 0x0F;
     let broadcasted = vdupq_n_u32(mask_bits);
 
     // Bit positions for each lane: [1, 2, 4, 8]
@@ -137,7 +138,7 @@ pub unsafe fn ternary_matvec_neon(
     }
 }
 
-/// Dispatch to NEON on aarch64 (always available on ARMv8+)
+/// Dispatch to NEON on aarch64 (always available on `ARMv8`+)
 #[cfg(target_arch = "aarch64")]
 #[inline]
 pub fn ternary_matvec_dispatch(input: &[f32], weights: &TernaryWeightKernel, output: &mut [f32]) {
@@ -153,6 +154,7 @@ pub fn ternary_matvec_dispatch(input: &[f32], weights: &TernaryWeightKernel, out
 #[cfg(target_arch = "aarch64")]
 mod tests {
     use super::*;
+    use crate::ops::ternary_matvec_kernel;
 
     #[test]
     fn test_neon_basic_matvec() {

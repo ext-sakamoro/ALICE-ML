@@ -1,16 +1,16 @@
-//! BitLinear layer — drop-in replacement for nn.Linear using 1.58-bit ternary weights.
+//! `BitLinear` layer — drop-in replacement for nn.Linear using 1.58-bit ternary weights.
 //!
-//! Combines TernaryWeightKernel + optional bias + RMSNorm into a single forward() call.
+//! Combines `TernaryWeightKernel` + optional bias + `RMSNorm` into a single `forward()` call.
 //!
 //! Author: Moroya Sakamoto
 
 use crate::ops::{ternary_matvec_kernel, TernaryWeightKernel};
 
-/// A BitLinear layer: ternary weights + optional bias + optional pre-norm.
+/// A `BitLinear` layer: ternary weights + optional bias + optional pre-norm.
 ///
 /// This is the primary layer abstraction in ALICE-ML. It encapsulates a
 /// `TernaryWeightKernel` (bit-parallel, SIMD-ready) with an optional bias
-/// vector and optional RMSNorm pre-normalization, matching the BitNet b1.58
+/// vector and optional `RMSNorm` pre-normalization, matching the `BitNet` b1.58
 /// paper's design.
 ///
 /// # Example
@@ -33,25 +33,29 @@ use crate::ops::{ternary_matvec_kernel, TernaryWeightKernel};
 pub struct BitLinear {
     /// Ternary weight kernel (bitplane format for SIMD).
     pub weights: TernaryWeightKernel,
-    /// Optional bias vector (f32, length = out_features).
+    /// Optional bias vector (f32, length = `out_features`).
     pub bias: Option<Vec<f32>>,
     /// Input features dimension.
     pub in_features: usize,
     /// Output features dimension.
     pub out_features: usize,
-    /// Whether to apply RMSNorm before matmul.
+    /// Whether to apply `RMSNorm` before matmul.
     pub pre_norm: bool,
-    /// RMSNorm epsilon.
+    /// `RMSNorm` epsilon.
     pub norm_eps: f32,
 }
 
 impl BitLinear {
-    /// Create a new BitLinear layer.
+    /// Create a new `BitLinear` layer.
     ///
     /// # Arguments
-    /// * `weights` - Pre-built TernaryWeightKernel (bit-parallel format).
+    /// * `weights` - Pre-built `TernaryWeightKernel` (bit-parallel format).
     /// * `bias` - Optional bias vector; length must equal `weights.out_features()`.
-    /// * `pre_norm` - Apply RMSNorm to the input before the matmul (BitNet b1.58 style).
+    /// * `pre_norm` - Apply `RMSNorm` to the input before the matmul (`BitNet` b1.58 style).
+    ///
+    /// # Panics
+    /// Panics if `bias` is `Some` and its length does not equal `weights.out_features()`.
+    #[must_use]
     pub fn new(weights: TernaryWeightKernel, bias: Option<Vec<f32>>, pre_norm: bool) -> Self {
         let in_features = weights.in_features();
         let out_features = weights.out_features();
@@ -68,11 +72,11 @@ impl BitLinear {
         }
     }
 
-    /// Forward pass: input (in_features,) → output (out_features,)
+    /// Forward pass: input (`in_features`,) → output (`out_features`,)
     ///
     /// Uses DPS pattern — caller provides the output buffer. ZERO HEAP ALLOCATION.
     ///
-    /// If `pre_norm` is true, RMSNorm is applied to the input before the ternary
+    /// If `pre_norm` is true, `RMSNorm` is applied to the input before the ternary
     /// matmul. This is equivalent to normalising the input first, but is computed
     /// efficiently by scaling the output by `inv_rms` after the matmul (linearity).
     ///
@@ -86,7 +90,7 @@ impl BitLinear {
         if self.pre_norm {
             // Compute RMS of input inline (no allocation)
             let mut sum_sq: f32 = 0.0;
-            for &x in input.iter() {
+            for &x in input {
                 sum_sq += x * x;
             }
             let rms = (sum_sq / input.len() as f32 + self.norm_eps).sqrt();
@@ -112,11 +116,13 @@ impl BitLinear {
     }
 
     /// Memory footprint in bytes (weights + bias).
+    #[must_use]
     pub fn memory_bytes(&self) -> usize {
         self.weights.memory_bytes() + self.bias.as_ref().map_or(0, |b| b.len() * 4)
     }
 
     /// Compression ratio vs an equivalent FP32 linear layer (weights + bias).
+    #[must_use]
     pub fn compression_ratio(&self) -> f32 {
         let fp32_bytes = (self.in_features * self.out_features * 4
             + self.bias.as_ref().map_or(0, |b| b.len() * 4)) as f32;
