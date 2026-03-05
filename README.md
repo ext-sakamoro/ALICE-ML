@@ -133,10 +133,16 @@ println!("MAE: {}", stats.mae);
 
 ## Modules
 
-- `tensor.rs` - N-dimensional array with Arena allocator
-- `ops.rs` - Ternary MatMul kernel (the heart)
-- `quantize.rs` - FP32 → Ternary conversion
-- `arena.rs` - Zero-allocation memory management
+- `arena.rs` - Zero-allocation bump allocator
+- `tensor.rs` - N-dimensional tensor with DPS ops (relu, softmax, gelu, silu, layer_norm, rms_norm)
+- `ops.rs` - Ternary MatMul kernel (packed + bit-parallel SIMD)
+- `layer.rs` - BitLinear layer (drop-in nn.Linear replacement)
+- `quantize.rs` - FP32 → Ternary quantization (BitNet b1.58)
+- `error_analysis.rs` - Cumulative quantization error analysis
+- `neon.rs` - ARM NEON 4-wide SIMD (feature: `neon`)
+- `ffi.rs` - C-ABI FFI 51 functions (feature: `ffi`)
+- `python.rs` - PyO3 + NumPy bindings (feature: `pyo3`)
+- `db_bridge.rs` - ALICE-DB training metrics (feature: `db`)
 
 ## Use Cases
 
@@ -200,8 +206,12 @@ alice-ml = { path = "../ALICE-ML" }
 | Feature | Default | Description |
 |---------|---------|-------------|
 | `std` | Yes | Standard library support |
+| `ffi` | No | C-ABI FFI (51 extern "C" functions) |
 | `simd` | No | AVX2 8-wide SIMD kernels (tensor ops + ternary MatVec) |
+| `neon` | No | ARM NEON 4-wide SIMD kernels (aarch64) |
 | `parallel` | No | Rayon parallel batch MatMul |
+| `pyo3` | No | Python bindings (PyO3 + NumPy zero-copy) |
+| `db` | No | ALICE-DB training metrics persistence |
 
 ```bash
 cargo build --release --features simd       # Enable SIMD kernels
@@ -255,13 +265,54 @@ sink.record_step(step, loss, accuracy, sparsity)?;
 let losses = sink.query_loss(0, 1000)?;
 ```
 
+## FFI / Bindings
+
+### C-ABI FFI (`--features ffi`)
+
+51 `extern "C"` functions with `am_ml_*` prefix:
+
+| Category | Functions | Description |
+|----------|----------|-------------|
+| Arena | 7 | Bump allocator lifecycle + alloc |
+| TernaryWeight | 8 | Packed 2-bit weights |
+| TernaryWeightKernel | 9 | Bit-parallel SIMD weights |
+| Matvec DPS | 4 | Core ternary kernels |
+| Tensor DPS | 13 | Element-wise ops (add/sub/relu/softmax/norms) |
+| BitLinear | 5 | Neural layer (forward + properties) |
+| Quantize | 4 | FP32 → ternary quantization |
+| Version | 1 | Library version |
+
+### Unity C# (`bindings/unity/AliceMl.cs`)
+
+51 DllImport + 7 RAII IDisposable handles (ArenaHandle, TernaryWeightHandle, TernaryKernelHandle, BitLinearHandle, QuantizedHandle) + TensorOps static class.
+
+### UE5 C++ (`bindings/ue5/AliceMl.h`)
+
+51 extern C + 7 RAII `unique_ptr` handles (ArenaPtr, WeightPtr, KernelPtr, BitLinearPtr) + helper functions (MakeArena, MakeWeight, MakeKernel, MakeBitLinear, Forward, Matvec, MatvecSimd, Quantize, Dequantize).
+
+### Python (PyO3, `--features pyo3`)
+
+3 classes (PyTernaryWeight, PyTernaryWeightKernel, PyQuantStats) + 12 module functions (add, sub, scale, relu, softmax, sum, mean, max, min, quantize, dequantize, quantization_error). GIL-released, zero-copy NumPy arrays.
+
+## Test Suite
+
+| Feature | Tests |
+|---------|-------|
+| Core (default) | 93 unit + 2 doc |
+| FFI (`ffi`) | +20 |
+| **Total** | **115** |
+
 ## Roadmap
 
 - [x] Fixed-point inference via ALICE-Physics integration (deterministic game AI)
 - [x] AVX2 SIMD kernels (tensor ops + ternary MatVec)
 - [x] Rayon parallel batch MatMul
-- [ ] NEON SIMD kernels (ARM)
-- [ ] BitLinear layer (drop-in nn.Linear replacement)
+- [x] NEON SIMD kernels (ARM aarch64)
+- [x] BitLinear layer (drop-in nn.Linear replacement)
+- [x] C-ABI FFI (51 functions)
+- [x] Unity C# bindings
+- [x] UE5 C++ bindings
+- [x] PyO3 + NumPy Python bindings
 - [ ] Knowledge distillation from PyTorch models
 - [ ] Early exit for dynamic depth
 - [ ] `.aml` model format with mmap loading

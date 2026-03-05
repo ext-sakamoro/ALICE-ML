@@ -1,3 +1,4 @@
+#![allow(clippy::missing_safety_doc)]
 //! C-ABI FFI for ALICE-ML
 //!
 //! 51 `extern "C"` functions with `am_ml_*` prefix.
@@ -23,10 +24,6 @@ use crate::ops::{
     TernaryWeight, TernaryWeightKernel,
 };
 use crate::quantize::{compute_quantization_error, dequantize_from_ternary, quantize_to_ternary};
-use crate::tensor::{
-    tensor_add, tensor_copy, tensor_layer_norm, tensor_max, tensor_mean, tensor_min, tensor_relu,
-    tensor_relu_inplace, tensor_rms_norm, tensor_scale, tensor_softmax, tensor_sub, tensor_sum,
-};
 
 // ============================================================================
 // Arena (7)
@@ -75,10 +72,7 @@ pub unsafe extern "C" fn am_ml_arena_remaining(arena: *const Arena) -> usize {
 /// Arenaからf32配列を確保。失敗時はnullを返す。
 /// 返されたポインタはArenaのリセット・解放後は無効。
 #[no_mangle]
-pub unsafe extern "C" fn am_ml_arena_alloc_f32(
-    arena: *mut Arena,
-    count: usize,
-) -> *mut f32 {
+pub unsafe extern "C" fn am_ml_arena_alloc_f32(arena: *mut Arena, count: usize) -> *mut f32 {
     let Some(a) = (unsafe { arena.as_mut() }) else {
         return core::ptr::null_mut();
     };
@@ -148,11 +142,7 @@ pub unsafe extern "C" fn am_ml_weight_compression_ratio(w: *const TernaryWeight)
 
 /// 指定位置の重みを取得（i8: -1, 0, +1）
 #[no_mangle]
-pub unsafe extern "C" fn am_ml_weight_get(
-    w: *const TernaryWeight,
-    row: usize,
-    col: usize,
-) -> i8 {
+pub unsafe extern "C" fn am_ml_weight_get(w: *const TernaryWeight, row: usize, col: usize) -> i8 {
     unsafe { w.as_ref() }.map_or(0, |w| w.get(row, col).to_i8())
 }
 
@@ -248,7 +238,7 @@ pub unsafe extern "C" fn am_ml_kernel_words_per_row(k: *const TernaryWeightKerne
 // ============================================================================
 
 /// 三値行列-ベクトル積（パック重み版）
-/// output[0..out_len] = W * input[0..in_len]
+/// `output[0..out_len] = W * input[0..in_len]`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_matvec(
     input: *const f32,
@@ -335,60 +325,51 @@ pub unsafe extern "C" fn am_ml_matvec_simd(
 }
 
 // ============================================================================
-// Tensor DPS ops (13)
+// Tensor DPS ops (13) — 直接スライス操作（Tensor型を経由しない）
 // ============================================================================
 
-/// element-wise 加算: out[i] = a[i] + b[i]
+/// element-wise 加算: `out[i] = a[i] + b[i]`
 #[no_mangle]
-pub unsafe extern "C" fn am_ml_tensor_add(
-    a: *const f32,
-    b: *const f32,
-    out: *mut f32,
-    len: usize,
-) {
+pub unsafe extern "C" fn am_ml_tensor_add(a: *const f32, b: *const f32, out: *mut f32, len: usize) {
     if a.is_null() || b.is_null() || out.is_null() {
         return;
     }
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
     let sb = unsafe { core::slice::from_raw_parts(b, len) };
     let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    tensor_add(sa, sb, so);
+    for ((o, &av), &bv) in so.iter_mut().zip(sa.iter()).zip(sb.iter()) {
+        *o = av + bv;
+    }
 }
 
-/// element-wise 減算: out[i] = a[i] - b[i]
+/// element-wise 減算: `out[i] = a[i] - b[i]`
 #[no_mangle]
-pub unsafe extern "C" fn am_ml_tensor_sub(
-    a: *const f32,
-    b: *const f32,
-    out: *mut f32,
-    len: usize,
-) {
+pub unsafe extern "C" fn am_ml_tensor_sub(a: *const f32, b: *const f32, out: *mut f32, len: usize) {
     if a.is_null() || b.is_null() || out.is_null() {
         return;
     }
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
     let sb = unsafe { core::slice::from_raw_parts(b, len) };
     let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    tensor_sub(sa, sb, so);
+    for ((o, &av), &bv) in so.iter_mut().zip(sa.iter()).zip(sb.iter()) {
+        *o = av - bv;
+    }
 }
 
-/// スカラー乗算: out[i] = a[i] * s
+/// スカラー乗算: `out[i] = a[i] * s`
 #[no_mangle]
-pub unsafe extern "C" fn am_ml_tensor_scale(
-    a: *const f32,
-    s: f32,
-    out: *mut f32,
-    len: usize,
-) {
+pub unsafe extern "C" fn am_ml_tensor_scale(a: *const f32, s: f32, out: *mut f32, len: usize) {
     if a.is_null() || out.is_null() {
         return;
     }
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
     let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    tensor_scale(sa, s, so);
+    for (o, &av) in so.iter_mut().zip(sa.iter()) {
+        *o = av * s;
+    }
 }
 
-/// コピー: out[i] = a[i]
+/// コピー: `out[i] = a[i]`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_copy(a: *const f32, out: *mut f32, len: usize) {
     if a.is_null() || out.is_null() {
@@ -396,7 +377,7 @@ pub unsafe extern "C" fn am_ml_tensor_copy(a: *const f32, out: *mut f32, len: us
     }
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
     let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    tensor_copy(sa, so);
+    so.copy_from_slice(sa);
 }
 
 /// 合計
@@ -406,40 +387,40 @@ pub unsafe extern "C" fn am_ml_tensor_sum(a: *const f32, len: usize) -> f32 {
         return 0.0;
     }
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    tensor_sum(sa)
+    sa.iter().sum()
 }
 
 /// 平均
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_mean(a: *const f32, len: usize) -> f32 {
-    if a.is_null() {
+    if a.is_null() || len == 0 {
         return 0.0;
     }
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    tensor_mean(sa)
+    sa.iter().sum::<f32>() / len as f32
 }
 
 /// 最小値
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_min(a: *const f32, len: usize) -> f32 {
-    if a.is_null() {
+    if a.is_null() || len == 0 {
         return 0.0;
     }
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    tensor_min(sa)
+    sa.iter().copied().fold(f32::INFINITY, f32::min)
 }
 
 /// 最大値
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_max(a: *const f32, len: usize) -> f32 {
-    if a.is_null() {
+    if a.is_null() || len == 0 {
         return 0.0;
     }
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    tensor_max(sa)
+    sa.iter().copied().fold(f32::NEG_INFINITY, f32::max)
 }
 
-/// ReLU: out[i] = max(0, a[i])
+/// ReLU: `out[i] = max(0, a[i])`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_relu(a: *const f32, out: *mut f32, len: usize) {
     if a.is_null() || out.is_null() {
@@ -447,31 +428,46 @@ pub unsafe extern "C" fn am_ml_tensor_relu(a: *const f32, out: *mut f32, len: us
     }
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
     let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    tensor_relu(sa, so);
+    for (o, &av) in so.iter_mut().zip(sa.iter()) {
+        *o = av.max(0.0);
+    }
 }
 
-/// ReLUインプレース: a[i] = max(0, a[i])
+/// ReLUインプレース: `a[i] = max(0, a[i])`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_relu_inplace(a: *mut f32, len: usize) {
     if a.is_null() {
         return;
     }
     let sa = unsafe { core::slice::from_raw_parts_mut(a, len) };
-    tensor_relu_inplace(sa);
+    for x in sa.iter_mut() {
+        *x = x.max(0.0);
+    }
 }
 
 /// Softmax: out = softmax(a)
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_softmax(a: *const f32, out: *mut f32, len: usize) {
-    if a.is_null() || out.is_null() {
+    if a.is_null() || out.is_null() || len == 0 {
         return;
     }
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
     let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    tensor_softmax(sa, so);
+    let max_val = sa.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let mut sum = 0.0f32;
+    for (o, &x) in so.iter_mut().zip(sa.iter()) {
+        *o = (x - max_val).exp();
+        sum += *o;
+    }
+    if sum > 0.0 {
+        let inv = 1.0 / sum;
+        for o in so.iter_mut() {
+            *o *= inv;
+        }
+    }
 }
 
-/// RMSNorm: out = rms_norm(a, epsilon)
+/// RMSNorm: out = x / sqrt(mean(x²) + eps)
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_rms_norm(
     a: *const f32,
@@ -479,15 +475,22 @@ pub unsafe extern "C" fn am_ml_tensor_rms_norm(
     out: *mut f32,
     len: usize,
 ) {
-    if a.is_null() || out.is_null() {
+    if a.is_null() || out.is_null() || len == 0 {
         return;
     }
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
     let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    tensor_rms_norm(sa, epsilon, so);
+    let mut sum_sq: f32 = 0.0;
+    for &x in sa.iter() {
+        sum_sq += x * x;
+    }
+    let inv_rms = 1.0 / (sum_sq / len as f32 + epsilon).sqrt();
+    for (o, &x) in so.iter_mut().zip(sa.iter()) {
+        *o = x * inv_rms;
+    }
 }
 
-/// LayerNorm: out = layer_norm(a, epsilon)
+/// LayerNorm: out = (x - mean) / sqrt(var + eps)
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_layer_norm(
     a: *const f32,
@@ -495,12 +498,21 @@ pub unsafe extern "C" fn am_ml_tensor_layer_norm(
     out: *mut f32,
     len: usize,
 ) {
-    if a.is_null() || out.is_null() {
+    if a.is_null() || out.is_null() || len == 0 {
         return;
     }
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
     let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    tensor_layer_norm(sa, epsilon, so);
+    let mean = sa.iter().sum::<f32>() / len as f32;
+    let mut var: f32 = 0.0;
+    for &x in sa.iter() {
+        let d = x - mean;
+        var += d * d;
+    }
+    let inv_std = 1.0 / (var / len as f32 + epsilon).sqrt();
+    for (o, &x) in so.iter_mut().zip(sa.iter()) {
+        *o = (x - mean) * inv_std;
+    }
 }
 
 // ============================================================================
@@ -548,11 +560,8 @@ pub unsafe extern "C" fn am_ml_bitlinear_forward(
     output: *mut f32,
     out_len: usize,
 ) {
-    let (Some(l), false, false) = (
-        unsafe { layer.as_ref() },
-        input.is_null(),
-        output.is_null(),
-    ) else {
+    let (Some(l), false, false) = (unsafe { layer.as_ref() }, input.is_null(), output.is_null())
+    else {
         return;
     };
     let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
@@ -952,8 +961,20 @@ mod tests {
             assert_eq!(am_ml_kernel_out_features(core::ptr::null()), 0);
             assert!(am_ml_kernel_from_weight(core::ptr::null()).is_null());
 
-            am_ml_matvec(core::ptr::null(), 0, core::ptr::null(), core::ptr::null_mut(), 0);
-            am_ml_matvec_kernel(core::ptr::null(), 0, core::ptr::null(), core::ptr::null_mut(), 0);
+            am_ml_matvec(
+                core::ptr::null(),
+                0,
+                core::ptr::null(),
+                core::ptr::null_mut(),
+                0,
+            );
+            am_ml_matvec_kernel(
+                core::ptr::null(),
+                0,
+                core::ptr::null(),
+                core::ptr::null_mut(),
+                0,
+            );
 
             am_ml_tensor_add(
                 core::ptr::null(),
@@ -968,7 +989,10 @@ mod tests {
             assert_eq!(am_ml_bitlinear_memory_bytes(core::ptr::null()), 0);
 
             assert!(am_ml_quantize(core::ptr::null(), 0, 0, 0).is_null());
-            assert_eq!(am_ml_dequantize(core::ptr::null(), core::ptr::null_mut(), 0), 0);
+            assert_eq!(
+                am_ml_dequantize(core::ptr::null(), core::ptr::null_mut(), 0),
+                0
+            );
         }
     }
 

@@ -2,6 +2,19 @@
 
 All notable changes to ALICE-ML will be documented in this file.
 
+## [0.1.1] - 2026-03-04
+
+### Added
+- `ffi` — C-ABI FFI 51 `extern "C"` functions (Arena/Weight/Kernel/Matvec/Tensor/BitLinear/Quantize/Version)
+- Unity C# bindings — 51 DllImport + 7 RAII IDisposable handles (`bindings/unity/AliceMl.cs`)
+- UE5 C++ bindings — 51 extern C + 7 RAII unique_ptr handles (`bindings/ue5/AliceMl.h`)
+- FFI prefix: `am_ml_*`
+- 115 tests (93 core + 20 FFI + 2 doc-tests)
+
+### Fixed
+- `cargo fmt` trailing spaces修正
+- `tensor.rs` unused_mut修正
+
 ## [0.1.0] - 2026-02-23
 
 ### Added

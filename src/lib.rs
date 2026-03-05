@@ -122,6 +122,9 @@ pub mod neon;
 #[cfg(feature = "db")]
 pub mod db_bridge;
 
+#[cfg(feature = "ffi")]
+pub mod ffi;
+
 #[cfg(feature = "pyo3")]
 #[allow(clippy::needless_pass_by_value)] // PyO3 requires pass-by-value for Python types
 pub mod python;
