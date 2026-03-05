@@ -66,28 +66,28 @@ impl Arena {
 
     /// Reset arena for reuse (no deallocation, just reset offset)
     #[inline]
-    pub fn reset(&mut self) {
+    pub const fn reset(&mut self) {
         self.offset = 0;
     }
 
     /// Current usage in bytes
     #[inline]
     #[must_use]
-    pub fn used(&self) -> usize {
+    pub const fn used(&self) -> usize {
         self.offset
     }
 
     /// Total capacity in bytes
     #[inline]
     #[must_use]
-    pub fn capacity(&self) -> usize {
+    pub const fn capacity(&self) -> usize {
         self.buffer.len()
     }
 
     /// Remaining capacity in bytes
     #[inline]
     #[must_use]
-    pub fn remaining(&self) -> usize {
+    pub const fn remaining(&self) -> usize {
         self.buffer.len() - self.offset
     }
 }

@@ -97,7 +97,12 @@ impl LayerConfig {
 
     /// Construct a layer with explicit weight variance and sparsity.
     #[must_use]
-    pub fn with_stats(fan_in: usize, fan_out: usize, weight_variance: f32, sparsity: f32) -> Self {
+    pub const fn with_stats(
+        fan_in: usize,
+        fan_out: usize,
+        weight_variance: f32,
+        sparsity: f32,
+    ) -> Self {
         Self {
             fan_in,
             fan_out,
@@ -131,7 +136,7 @@ pub struct CumulativeQuantError {
 impl CumulativeQuantError {
     /// Initialise with unit activations (`σ_act` = 1.0) and no error.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             error_product: 1.0,
             sigma_act: 1.0,
@@ -155,7 +160,7 @@ impl CumulativeQuantError {
         if has_residual {
             // Residual: σ_combined = sqrt(σ_main² + σ_skip²)
             // Approximate skip as carrying the same σ_act level.
-            self.sigma_act = (sigma_out * sigma_out + self.sigma_act * self.sigma_act).sqrt();
+            self.sigma_act = sigma_out.hypot(self.sigma_act);
         } else {
             self.sigma_act = sigma_out;
         }
@@ -650,6 +655,28 @@ mod tests {
         assert!(
             (report.total_error - (expected_product - 1.0)).abs() < 1e-9,
             "total_error = product - 1 must hold"
+        );
+    }
+
+    // sparsity=1.0 のとき誤差は上限 1.0 にクランプされる
+    #[test]
+    fn test_full_sparsity_error_clamped_to_one() {
+        // sparsity=1.0 → error_sq_ratio = (1-2/π) + 1*(2/π) = 1.0
+        // よって local_error = sqrt(1.0) = 1.0、total_error = (1+1)^1 - 1 = 1.0
+        let cfg = LayerConfig::with_stats(64, 32, 1.0 / 64.0, 1.0);
+        let report = compute_layer_error_propagation(&[cfg]);
+
+        assert_eq!(report.num_layers, 1);
+        let local = report.layers[0].local_error;
+        assert!(
+            (local - 1.0).abs() < 1e-9,
+            "full-sparsity local_error should be 1.0, got {:.9}",
+            local
+        );
+        assert!(
+            (report.total_error - 1.0).abs() < 1e-9,
+            "full-sparsity total_error should be 1.0, got {:.9}",
+            report.total_error
         );
     }
 }

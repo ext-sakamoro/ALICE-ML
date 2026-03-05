@@ -110,21 +110,21 @@ impl TernaryWeight {
     /// Number of output features (rows)
     #[inline]
     #[must_use]
-    pub fn out_features(&self) -> usize {
+    pub const fn out_features(&self) -> usize {
         self.out_features
     }
 
     /// Number of input features (columns)
     #[inline]
     #[must_use]
-    pub fn in_features(&self) -> usize {
+    pub const fn in_features(&self) -> usize {
         self.in_features
     }
 
     /// Scale factor applied after accumulation
     #[inline]
     #[must_use]
-    pub fn scale(&self) -> f32 {
+    pub const fn scale(&self) -> f32 {
         self.scale
     }
 
@@ -138,7 +138,7 @@ impl TernaryWeight {
     /// Memory footprint of packed weights in bytes
     #[inline]
     #[must_use]
-    pub fn memory_bytes(&self) -> usize {
+    pub const fn memory_bytes(&self) -> usize {
         self.packed.len()
     }
 
@@ -278,28 +278,28 @@ impl TernaryWeightKernel {
     /// Number of output features (rows)
     #[inline]
     #[must_use]
-    pub fn out_features(&self) -> usize {
+    pub const fn out_features(&self) -> usize {
         self.out_features
     }
 
     /// Number of input features (columns)
     #[inline]
     #[must_use]
-    pub fn in_features(&self) -> usize {
+    pub const fn in_features(&self) -> usize {
         self.in_features
     }
 
     /// Scale factor applied after accumulation
     #[inline]
     #[must_use]
-    pub fn scale(&self) -> f32 {
+    pub const fn scale(&self) -> f32 {
         self.scale
     }
 
     /// Memory footprint of bit-parallel weights in bytes
     #[inline]
     #[must_use]
-    pub fn memory_bytes(&self) -> usize {
+    pub const fn memory_bytes(&self) -> usize {
         (self.plus_bits.len() + self.minus_bits.len()) * 4
     }
 
@@ -332,7 +332,7 @@ impl TernaryWeightKernel {
     /// Number of u32 words per row
     #[inline]
     #[must_use]
-    pub fn words_per_row(&self) -> usize {
+    pub const fn words_per_row(&self) -> usize {
         self.words_per_row
     }
 }
@@ -774,7 +774,7 @@ pub fn ternary_matvec_simd_dispatch(
 #[inline(always)]
 #[allow(dead_code)]
 #[must_use]
-pub fn extract_plus_mask(byte: u8) -> u8 {
+pub const fn extract_plus_mask(byte: u8) -> u8 {
     let b0 = (byte & 0b0000_0011) == 0b01;
     let b1 = (byte & 0b0000_1100) == 0b0100;
     let b2 = (byte & 0b0011_0000) == 0b01_0000;
@@ -786,7 +786,7 @@ pub fn extract_plus_mask(byte: u8) -> u8 {
 #[inline(always)]
 #[allow(dead_code)]
 #[must_use]
-pub fn extract_minus_mask(byte: u8) -> u8 {
+pub const fn extract_minus_mask(byte: u8) -> u8 {
     let b0 = (byte & 0b0000_0011) == 0b10;
     let b1 = (byte & 0b0000_1100) == 0b1000;
     let b2 = (byte & 0b0011_0000) == 0b10_0000;
@@ -1075,7 +1075,7 @@ mod tests {
         let n_in = 40;
         let n_out = 3;
         let values: Vec<i8> = (0..n_in * n_out).map(|i| (i as i8 % 3) - 1).collect();
-        let input: Vec<f32> = (0..n_in).map(|i| (i as f32) * 0.1 - 2.0).collect();
+        let input: Vec<f32> = (0..n_in).map(|i| (i as f32).mul_add(0.1, -2.0)).collect();
 
         let kernel = TernaryWeightKernel::from_ternary(&values, n_out, n_in);
 
@@ -1093,6 +1093,69 @@ mod tests {
                 out_scalar[i],
                 out_dispatch[i]
             );
+        }
+    }
+
+    // from_packed_weight で変換したカーネルは from_ternary と同じ推論結果を返す
+    #[test]
+    fn test_from_packed_weight_matches_from_ternary() {
+        // 3x4 の混合重みで packed → kernel 変換を検証する
+        let values: Vec<i8> = vec![1, -1, 0, 1, -1, 1, 1, 0, 0, -1, 1, -1];
+        let packed_weight = TernaryWeight::from_ternary(&values, 3, 4);
+        let kernel_direct = TernaryWeightKernel::from_ternary(&values, 3, 4);
+        let kernel_from_packed = TernaryWeightKernel::from_packed_weight(&packed_weight);
+
+        let input = [1.0f32, 2.0, 3.0, 4.0];
+        let mut out_direct = [0.0f32; 3];
+        let mut out_from_packed = [0.0f32; 3];
+
+        ternary_matvec_kernel(&input, &kernel_direct, &mut out_direct);
+        ternary_matvec_kernel(&input, &kernel_from_packed, &mut out_from_packed);
+
+        for i in 0..3 {
+            assert!(
+                (out_direct[i] - out_from_packed[i]).abs() < 1e-5,
+                "from_packed_weight mismatch at row {}: direct={} packed={}",
+                i,
+                out_direct[i],
+                out_from_packed[i]
+            );
+        }
+    }
+
+    // TernaryWeight::memory_bytes は ceil(out*in / 4) バイトを返す
+    #[test]
+    fn test_ternary_weight_memory_bytes() {
+        // 4 weights → 1 byte
+        let w4 = TernaryWeight::from_ternary(&[1, -1, 0, 1], 1, 4);
+        assert_eq!(w4.memory_bytes(), 1, "4 weights should pack into 1 byte");
+
+        // 5 weights → 2 bytes (ceiling)
+        let w5 = TernaryWeight::from_ternary(&[1, -1, 0, 1, -1], 1, 5);
+        assert_eq!(w5.memory_bytes(), 2, "5 weights should pack into 2 bytes");
+
+        // 8 weights → 2 bytes
+        let w8 = TernaryWeight::from_ternary(&[1, -1, 0, 1, -1, 1, 0, -1], 2, 4);
+        assert_eq!(w8.memory_bytes(), 2, "8 weights should pack into 2 bytes");
+    }
+
+    // TernaryWeight::get が行をまたぐインデックスでも正しく値を返す
+    #[test]
+    fn test_ternary_weight_get_cross_row_boundary() {
+        // 2 行 × 5 列: packed 境界 (インデックス 4 と 5) が行境界と一致しない
+        let values: Vec<i8> = vec![1, -1, 0, 1, -1, 1, 0, -1, 1, 1];
+        let w = TernaryWeight::from_ternary(&values, 2, 5);
+
+        for row in 0..2 {
+            for col in 0..5 {
+                let got = w.get(row, col).to_i8();
+                let expected = values[row * 5 + col];
+                assert_eq!(
+                    got, expected,
+                    "get({},{}) returned {} expected {}",
+                    row, col, got, expected
+                );
+            }
         }
     }
 }

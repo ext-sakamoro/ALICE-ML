@@ -413,4 +413,67 @@ mod tests {
             compression
         );
     }
+
+    // QuantStats::sparsity はゼロ総数のときでも安全に 0.0 を返す
+    #[test]
+    fn test_quant_stats_sparsity_zero_total() {
+        // 全フィールドがゼロの default は総数 0 → sparsity = 0.0
+        let stats = QuantStats::default();
+        assert_eq!(
+            stats.sparsity(),
+            0.0,
+            "sparsity with zero total should return 0.0"
+        );
+
+        // zero_count がゼロ → sparsity = 0.0
+        let stats_no_zero = QuantStats {
+            plus_count: 5,
+            minus_count: 3,
+            zero_count: 0,
+            ..Default::default()
+        };
+        assert_eq!(
+            stats_no_zero.sparsity(),
+            0.0,
+            "sparsity with zero_count=0 should be 0.0"
+        );
+
+        // 全て zero_count → sparsity = 1.0
+        let stats_all_zero = QuantStats {
+            plus_count: 0,
+            minus_count: 0,
+            zero_count: 10,
+            ..Default::default()
+        };
+        assert!(
+            (stats_all_zero.sparsity() - 1.0).abs() < 1e-6,
+            "all-zero sparsity should be 1.0"
+        );
+    }
+
+    // dequantize_from_ternary はスケール因子を正しく乗算して復元する
+    #[test]
+    fn test_dequantize_scale_applied() {
+        // 既知の重み: [+1, -1, 0, +1] でスケール 2.5 を指定する
+        let packed_bytes = {
+            let tw = TernaryWeight::from_ternary(&[1i8, -1, 0, 1], 1, 4);
+            tw.packed().to_vec()
+        };
+        let custom_scale = 2.5f32;
+        let tw = TernaryWeight::from_packed(packed_bytes, 1, 4, custom_scale);
+
+        let dequantized = dequantize_from_ternary(&tw);
+
+        // 期待値: [+1*2.5, -1*2.5, 0*2.5, +1*2.5] = [2.5, -2.5, 0.0, 2.5]
+        let expected = [2.5f32, -2.5, 0.0, 2.5];
+        for (i, (&got, &exp)) in dequantized.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (got - exp).abs() < 1e-5,
+                "dequantize[{}]: expected {}, got {}",
+                i,
+                exp,
+                got
+            );
+        }
+    }
 }

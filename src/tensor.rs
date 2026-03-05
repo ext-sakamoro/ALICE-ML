@@ -80,34 +80,34 @@ impl<'a> Tensor<'a> {
     /// Get number of dimensions
     #[inline]
     #[must_use]
-    pub fn ndim(&self) -> usize {
+    pub const fn ndim(&self) -> usize {
         self.ndim
     }
 
     /// Total number of elements
     #[inline]
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.data.len()
     }
 
     /// Check if empty
     #[inline]
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
     /// Get raw data slice (immutable)
     #[inline]
     #[must_use]
-    pub fn data(&self) -> &[f32] {
+    pub const fn data(&self) -> &[f32] {
         self.data
     }
 
     /// Get mutable data slice
     #[inline]
-    pub fn data_mut(&mut self) -> &mut [f32] {
+    pub const fn data_mut(&mut self) -> &mut [f32] {
         self.data
     }
 
@@ -570,7 +570,7 @@ pub fn tensor_gelu(a: &Tensor, out: &mut Tensor) {
     let sqrt_2_over_pi: f32 = 0.797_884_6; // sqrt(2/pi)
     for i in 0..len {
         let x = a.data[i];
-        let inner = sqrt_2_over_pi * (x + 0.044_715 * x * x * x);
+        let inner = sqrt_2_over_pi * (0.044_715 * x * x).mul_add(x, x);
         // tanh(x) = (e^2x - 1)/(e^2x + 1)
         let exp2x = (2.0 * inner).exp();
         let tanh_val = (exp2x - 1.0) / (exp2x + 1.0);
@@ -584,7 +584,7 @@ pub fn tensor_gelu_inplace(a: &mut Tensor) {
     let sqrt_2_over_pi: f32 = 0.797_884_6;
     for i in 0..a.data.len() {
         let x = a.data[i];
-        let inner = sqrt_2_over_pi * (x + 0.044_715 * x * x * x);
+        let inner = sqrt_2_over_pi * (0.044_715 * x * x).mul_add(x, x);
         let exp2x = (2.0 * inner).exp();
         let tanh_val = (exp2x - 1.0) / (exp2x + 1.0);
         a.data[i] = 0.5 * x * (1.0 + tanh_val);
@@ -652,6 +652,7 @@ pub fn tensor_rms_norm(a: &Tensor, weight: Option<&Tensor>, eps: f32, out: &mut 
 /// DPS style — weight and bias are both optional.
 /// ZERO ALLOCATION.
 #[inline]
+#[allow(clippy::option_if_let_else)]
 pub fn tensor_layer_norm(
     a: &Tensor,
     weight: Option<&Tensor>,
@@ -832,7 +833,7 @@ impl QuantizedTensor {
     /// Get scale factor
     #[inline]
     #[must_use]
-    pub fn scale(&self) -> f32 {
+    pub const fn scale(&self) -> f32 {
         self.scale
     }
 
@@ -846,14 +847,14 @@ impl QuantizedTensor {
     /// Total number of elements
     #[inline]
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.data.len()
     }
 
     /// Check if empty
     #[inline]
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 }
@@ -927,14 +928,14 @@ impl OwnedTensor {
     /// Total elements
     #[inline]
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.data.len()
     }
 
     /// Check if empty
     #[inline]
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 

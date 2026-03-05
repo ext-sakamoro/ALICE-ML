@@ -209,9 +209,9 @@ impl Ternary {
     #[must_use]
     pub const fn from_i8(v: i8) -> Self {
         match v {
-            1 => Ternary::Plus,
-            -1 => Ternary::Minus,
-            _ => Ternary::Zero,
+            1 => Self::Plus,
+            -1 => Self::Minus,
+            _ => Self::Zero,
         }
     }
 
@@ -220,23 +220,23 @@ impl Ternary {
     #[must_use]
     pub const fn to_i8(self) -> i8 {
         match self {
-            Ternary::Zero => 0,
-            Ternary::Plus => 1,
-            Ternary::Minus => -1,
+            Self::Zero => 0,
+            Self::Plus => 1,
+            Self::Minus => -1,
         }
     }
 
     /// Pack 4 ternary values into a single byte
     #[inline(always)]
     #[must_use]
-    pub const fn pack4(t0: Ternary, t1: Ternary, t2: Ternary, t3: Ternary) -> u8 {
+    pub const fn pack4(t0: Self, t1: Self, t2: Self, t3: Self) -> u8 {
         (t0 as u8) | ((t1 as u8) << 2) | ((t2 as u8) << 4) | ((t3 as u8) << 6)
     }
 
     /// Unpack 4 ternary values from a byte
     #[inline(always)]
     #[must_use]
-    pub const fn unpack4(byte: u8) -> [Ternary; 4] {
+    pub const fn unpack4(byte: u8) -> [Self; 4] {
         [
             Self::from_bits(byte & 0b11),
             Self::from_bits((byte >> 2) & 0b11),
@@ -250,9 +250,9 @@ impl Ternary {
     #[must_use]
     pub const fn from_bits(bits: u8) -> Self {
         match bits {
-            0b01 => Ternary::Plus,
-            0b10 => Ternary::Minus,
-            _ => Ternary::Zero,
+            0b01 => Self::Plus,
+            0b10 => Self::Minus,
+            _ => Self::Zero,
         }
     }
 }
@@ -331,5 +331,55 @@ mod tests {
         assert!((output[0] - (-1.0)).abs() < 1e-6);
         assert!((output[1] - 2.0).abs() < 1e-6);
         assert!((output[2] - 1.0).abs() < 1e-6);
+    }
+
+    // Ternary::from_bits で全4ビットパターンを直接検証する
+    #[test]
+    fn test_ternary_from_bits_all_patterns() {
+        // 0b01 → Plus, 0b10 → Minus, 0b00/0b11 → Zero
+        assert_eq!(Ternary::from_bits(0b01), Ternary::Plus);
+        assert_eq!(Ternary::from_bits(0b10), Ternary::Minus);
+        assert_eq!(Ternary::from_bits(0b00), Ternary::Zero);
+        // 0b11 は未定義パターン → Zero にフォールバックする
+        assert_eq!(Ternary::from_bits(0b11), Ternary::Zero);
+
+        // to_i8 との整合性
+        assert_eq!(Ternary::from_bits(0b01).to_i8(), 1);
+        assert_eq!(Ternary::from_bits(0b10).to_i8(), -1);
+        assert_eq!(Ternary::from_bits(0b00).to_i8(), 0);
+    }
+
+    // pack4 → unpack4 の全組み合わせで可逆性を検証する
+    #[test]
+    fn test_ternary_pack_unpack_all_combos() {
+        use Ternary::{Minus, Plus, Zero};
+        let variants = [Plus, Minus, Zero];
+
+        for &a in &variants {
+            for &b in &variants {
+                for &c in &variants {
+                    for &d in &variants {
+                        let byte = Ternary::pack4(a, b, c, d);
+                        let unpacked = Ternary::unpack4(byte);
+                        assert_eq!(
+                            unpacked[0], a,
+                            "pack4/unpack4 roundtrip failed at position 0"
+                        );
+                        assert_eq!(
+                            unpacked[1], b,
+                            "pack4/unpack4 roundtrip failed at position 1"
+                        );
+                        assert_eq!(
+                            unpacked[2], c,
+                            "pack4/unpack4 roundtrip failed at position 2"
+                        );
+                        assert_eq!(
+                            unpacked[3], d,
+                            "pack4/unpack4 roundtrip failed at position 3"
+                        );
+                    }
+                }
+            }
+        }
     }
 }
