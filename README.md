@@ -143,7 +143,7 @@ println!("MAE: {}", stats.mae);
 - `speculative.rs` - Speculative Decoding (draft lookahead + verification + L2-resident decoder)
 - `streaming.rs` - Weight Streaming (on-demand layer loading with LRU eviction)
 - `neon.rs` - ARM NEON 4-wide SIMD (feature: `neon`)
-- `ffi.rs` - C-ABI FFI 51 functions (feature: `ffi`)
+- `ffi.rs` - C-ABI FFI 65 functions (feature: `ffi`)
 - `python.rs` - PyO3 + NumPy bindings (feature: `pyo3`)
 - `db_bridge.rs` - ALICE-DB training metrics (feature: `db`)
 
@@ -275,7 +275,7 @@ let losses = sink.query_loss(0, 1000)?;
 
 ### C-ABI FFI (`--features ffi`)
 
-51 `extern "C"` functions with `am_ml_*` prefix:
+65 `extern "C"` functions with `am_ml_*` prefix:
 
 | Category | Functions | Description |
 |----------|----------|-------------|
@@ -286,15 +286,17 @@ let losses = sink.query_loss(0, 1000)?;
 | Tensor DPS | 13 | Element-wise ops (add/sub/relu/softmax/norms) |
 | BitLinear | 5 | Neural layer (forward + properties) |
 | Quantize | 4 | FP32 → ternary quantization |
+| MicroModel | 8 | L2 cache-resident micro model |
+| CacheResidentDecoder | 6 | L2 draft + DRAM verify decoder |
 | Version | 1 | Library version |
 
 ### Unity C# (`bindings/unity/AliceMl.cs`)
 
-51 DllImport + 7 RAII IDisposable handles (ArenaHandle, TernaryWeightHandle, TernaryKernelHandle, BitLinearHandle, QuantizedHandle) + TensorOps static class.
+65 DllImport + 9 RAII IDisposable handles (ArenaHandle, TernaryWeightHandle, TernaryKernelHandle, BitLinearHandle, QuantizedHandle, MicroModelHandle, CacheDecoderHandle) + TensorOps static class.
 
 ### UE5 C++ (`bindings/ue5/AliceMl.h`)
 
-51 extern C + 7 RAII `unique_ptr` handles (ArenaPtr, WeightPtr, KernelPtr, BitLinearPtr) + helper functions (MakeArena, MakeWeight, MakeKernel, MakeBitLinear, Forward, Matvec, MatvecSimd, Quantize, Dequantize).
+65 extern C + 9 RAII `unique_ptr` handles (ArenaPtr, WeightPtr, KernelPtr, BitLinearPtr, MicroModelPtr, CacheDecoderPtr) + helper functions (MakeArena, MakeWeight, MakeKernel, MakeBitLinear, MakeMicroModel, MakeCacheDecoder, Forward, Matvec, MatvecSimd, Quantize, Dequantize).
 
 ### Python (PyO3, `--features pyo3`)
 
@@ -404,8 +406,8 @@ println!("Hit rate: {:.1}%", streamer.stats().hit_rate() * 100.0);
 | Feature | Tests |
 |---------|-------|
 | Core (default) | 155 unit + 6 doc |
-| FFI (`ffi`) | +50 |
-| **Total** | **211** |
+| FFI (`ffi`) | +74 |
+| **Total** | **235** |
 
 ## Roadmap
 
