@@ -1,5 +1,5 @@
 // ALICE-ML Unity C# Bindings
-// 51 DllImport + 7 RAII IDisposable handles
+// 65 DllImport + 9 RAII IDisposable handles
 //
 // Author: Moroya Sakamoto
 
@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 namespace Alice.ML
 {
     // ========================================================================
-    // Native P/Invoke (51 functions)
+    // Native P/Invoke (65 functions)
     // ========================================================================
 
     internal static class Native
@@ -79,6 +79,24 @@ namespace Alice.ML
         [DllImport(DLL)] internal static extern UIntPtr am_ml_dequantize(IntPtr w, float[] outBuf, UIntPtr maxLen);
         [DllImport(DLL)] internal static extern float am_ml_quantization_error_mae(float[] original, UIntPtr len, IntPtr quantized);
         [DllImport(DLL)] internal static extern float am_ml_quantization_error_snr(float[] original, UIntPtr len, IntPtr quantized);
+
+        // ---- MicroModel (8) ----
+        [DllImport(DLL)] internal static extern IntPtr am_ml_micro_model_build_random(UIntPtr inFeatures, UIntPtr outFeatures, UIntPtr[] hiddenDims, UIntPtr hiddenCount, UIntPtr budgetBytes, ulong seed);
+        [DllImport(DLL)] internal static extern void am_ml_micro_model_free(IntPtr model);
+        [DllImport(DLL)] internal static extern void am_ml_micro_model_forward(IntPtr model, float[] input, UIntPtr inLen, float[] output, UIntPtr outLen);
+        [DllImport(DLL)] internal static extern UIntPtr am_ml_micro_model_predict_tokens(IntPtr model, float[] input, UIntPtr inLen, float[] logits, UIntPtr logitsLen, UIntPtr steps);
+        [DllImport(DLL)] internal static extern UIntPtr am_ml_micro_model_memory_bytes(IntPtr model);
+        [DllImport(DLL)] internal static extern int am_ml_micro_model_fits_in_budget(IntPtr model);
+        [DllImport(DLL)] internal static extern UIntPtr am_ml_micro_model_param_count(IntPtr model);
+        [DllImport(DLL)] internal static extern UIntPtr am_ml_micro_model_depth(IntPtr model);
+
+        // ---- CacheResidentDecoder (6) ----
+        [DllImport(DLL)] internal static extern IntPtr am_ml_cache_decoder_new(IntPtr draft, IntPtr verifyKernel, UIntPtr maxDraftTokens);
+        [DllImport(DLL)] internal static extern void am_ml_cache_decoder_free(IntPtr decoder);
+        [DllImport(DLL)] internal static extern UIntPtr am_ml_cache_decoder_step(IntPtr decoder, float[] input, UIntPtr inLen, float[] draftBuf, UIntPtr draftLen, float[] verifyBuf, UIntPtr verifyLen);
+        [DllImport(DLL)] internal static extern int am_ml_cache_decoder_fits_in_cache(IntPtr decoder);
+        [DllImport(DLL)] internal static extern UIntPtr am_ml_cache_decoder_draft_memory(IntPtr decoder);
+        [DllImport(DLL)] internal static extern UIntPtr am_ml_cache_decoder_verify_memory(IntPtr decoder);
 
         // ---- Version (1) ----
         [DllImport(DLL)] internal static extern IntPtr am_ml_version();
@@ -208,6 +226,62 @@ namespace Alice.ML
         public float SNR => Native.am_ml_quantization_error_snr(_original, (UIntPtr)_len, Ptr);
 
         public void Dispose() { if (Ptr != IntPtr.Zero) { Native.am_ml_weight_free(Ptr); Ptr = IntPtr.Zero; } }
+    }
+
+    /// L2 cache-resident micro model handle
+    public sealed class MicroModelHandle : IDisposable
+    {
+        internal IntPtr Ptr;
+        internal bool Consumed;
+        internal MicroModelHandle(IntPtr ptr) { Ptr = ptr; }
+
+        public static MicroModelHandle BuildRandom(int inFeatures, int outFeatures, int[] hiddenDims, ulong budgetBytes, ulong seed)
+        {
+            var dims = hiddenDims != null ? Array.ConvertAll(hiddenDims, d => (UIntPtr)d) : null;
+            var count = dims != null ? dims.Length : 0;
+            return new MicroModelHandle(Native.am_ml_micro_model_build_random(
+                (UIntPtr)inFeatures, (UIntPtr)outFeatures, dims, (UIntPtr)count, (UIntPtr)budgetBytes, seed));
+        }
+
+        public void Forward(float[] input, float[] output)
+            => Native.am_ml_micro_model_forward(Ptr, input, (UIntPtr)input.Length, output, (UIntPtr)output.Length);
+
+        public int PredictTokens(float[] input, float[] logits, int steps)
+            => (int)Native.am_ml_micro_model_predict_tokens(Ptr, input, (UIntPtr)input.Length, logits, (UIntPtr)logits.Length, (UIntPtr)steps);
+
+        public int MemoryBytes => (int)Native.am_ml_micro_model_memory_bytes(Ptr);
+        public bool FitsInBudget => Native.am_ml_micro_model_fits_in_budget(Ptr) != 0;
+        public int ParamCount => (int)Native.am_ml_micro_model_param_count(Ptr);
+        public int Depth => (int)Native.am_ml_micro_model_depth(Ptr);
+
+        internal void MarkConsumed() { Consumed = true; Ptr = IntPtr.Zero; }
+
+        public void Dispose() { if (!Consumed && Ptr != IntPtr.Zero) { Native.am_ml_micro_model_free(Ptr); Ptr = IntPtr.Zero; } }
+    }
+
+    /// L2 cache-resident speculative decoder handle
+    public sealed class CacheDecoderHandle : IDisposable
+    {
+        internal IntPtr Ptr;
+        internal CacheDecoderHandle(IntPtr ptr) { Ptr = ptr; }
+
+        /// Create decoder (consumes draft and verifyKernel — do not use them after this call)
+        public static CacheDecoderHandle Create(MicroModelHandle draft, TernaryKernelHandle verifyKernel, int maxDraftTokens)
+        {
+            var handle = new CacheDecoderHandle(Native.am_ml_cache_decoder_new(draft.Ptr, verifyKernel.Ptr, (UIntPtr)maxDraftTokens));
+            draft.MarkConsumed();
+            verifyKernel.MarkConsumed();
+            return handle;
+        }
+
+        public int DecodeStep(float[] input, float[] draftBuf, float[] verifyBuf)
+            => (int)Native.am_ml_cache_decoder_step(Ptr, input, (UIntPtr)input.Length, draftBuf, (UIntPtr)draftBuf.Length, verifyBuf, (UIntPtr)verifyBuf.Length);
+
+        public bool FitsInCache => Native.am_ml_cache_decoder_fits_in_cache(Ptr) != 0;
+        public int DraftMemory => (int)Native.am_ml_cache_decoder_draft_memory(Ptr);
+        public int VerifyMemory => (int)Native.am_ml_cache_decoder_verify_memory(Ptr);
+
+        public void Dispose() { if (Ptr != IntPtr.Zero) { Native.am_ml_cache_decoder_free(Ptr); Ptr = IntPtr.Zero; } }
     }
 
     // ========================================================================

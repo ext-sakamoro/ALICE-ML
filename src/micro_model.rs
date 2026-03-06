@@ -227,12 +227,7 @@ impl MicroModel {
     ///
     /// # Panics
     /// `token_logits` が不足する場合。
-    pub fn predict_tokens(
-        &self,
-        input: &[f32],
-        token_logits: &mut [f32],
-        steps: usize,
-    ) -> usize {
+    pub fn predict_tokens(&self, input: &[f32], token_logits: &mut [f32], steps: usize) -> usize {
         assert!(
             token_logits.len() >= self.out_features * steps,
             "token_logits too small: {} < {}",
@@ -391,7 +386,10 @@ struct Lcg64(u64);
 impl Lcg64 {
     #[inline]
     const fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1);
         self.0 >> 33
     }
 }
@@ -462,8 +460,7 @@ mod tests {
     #[test]
     fn test_builder_will_fit_false() {
         // 巨大レイヤー: 4096→4096 → 2 × ceil(4096/32) × 4096 × 4 = 4MB
-        let builder =
-            MicroModelBuilder::new(4096, 4096, CacheBudget::custom(1024, "tiny"));
+        let builder = MicroModelBuilder::new(4096, 4096, CacheBudget::custom(1024, "tiny"));
 
         assert!(!builder.will_fit(), "4096→4096 should NOT fit in 1KB");
     }
@@ -553,8 +550,8 @@ mod tests {
         assert!(model.fits_in_budget());
 
         // 巨大モデル → 収まらない
-        let big = MicroModelBuilder::new(2048, 2048, CacheBudget::custom(256, "tiny"))
-            .build_random(1);
+        let big =
+            MicroModelBuilder::new(2048, 2048, CacheBudget::custom(256, "tiny")).build_random(1);
         assert!(!big.fits_in_budget());
     }
 
@@ -571,8 +568,8 @@ mod tests {
 
     #[test]
     fn test_model_budget_remaining() {
-        let model = MicroModelBuilder::new(16, 16, CacheBudget::custom(4096, "test"))
-            .build_random(1);
+        let model =
+            MicroModelBuilder::new(16, 16, CacheBudget::custom(4096, "test")).build_random(1);
 
         let remaining = model.budget_remaining();
         let used = model.memory_bytes();
@@ -694,6 +691,9 @@ mod tests {
             .zip(out2.iter())
             .map(|(a, b)| (a - b).abs())
             .sum();
-        assert!(diff > 0.0, "different seeds should produce different output");
+        assert!(
+            diff > 0.0,
+            "different seeds should produce different output"
+        );
     }
 }

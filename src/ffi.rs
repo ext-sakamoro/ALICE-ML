@@ -4,11 +4,11 @@
 //! 51 `extern "C"` functions with `am_ml_*` prefix.
 //!
 //! - Arena (7): arena lifecycle + alloc
-//! - TernaryWeight (8): packed 2-bit weights
-//! - TernaryWeightKernel (9): bit-parallel SIMD weights
+//! - `TernaryWeight` (8): packed 2-bit weights
+//! - `TernaryWeightKernel` (9): bit-parallel SIMD weights
 //! - Matvec DPS (4): core ternary kernels
 //! - Tensor DPS ops (13): element-wise ops
-//! - BitLinear (5): neural layer
+//! - `BitLinear` (5): neural layer
 //! - Quantize (4): FP32 → ternary
 //! - Version (1)
 //!
@@ -45,7 +45,7 @@ pub unsafe extern "C" fn am_ml_arena_free(arena: *mut Arena) {
 
 /// Arenaをリセット（オフセットをゼロに戻す）
 #[no_mangle]
-pub unsafe extern "C" fn am_ml_arena_reset(arena: *mut Arena) {
+pub const unsafe extern "C" fn am_ml_arena_reset(arena: *mut Arena) {
     if let Some(a) = unsafe { arena.as_mut() } {
         a.reset();
     }
@@ -54,19 +54,19 @@ pub unsafe extern "C" fn am_ml_arena_reset(arena: *mut Arena) {
 /// Arena使用量（バイト）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_used(arena: *const Arena) -> usize {
-    unsafe { arena.as_ref() }.map_or(0, |a| a.used())
+    unsafe { arena.as_ref() }.map_or(0, super::arena::Arena::used)
 }
 
 /// Arena容量（バイト）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_capacity(arena: *const Arena) -> usize {
-    unsafe { arena.as_ref() }.map_or(0, |a| a.capacity())
+    unsafe { arena.as_ref() }.map_or(0, super::arena::Arena::capacity)
 }
 
 /// Arena残容量（バイト）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_remaining(arena: *const Arena) -> usize {
-    unsafe { arena.as_ref() }.map_or(0, |a| a.remaining())
+    unsafe { arena.as_ref() }.map_or(0, super::arena::Arena::remaining)
 }
 
 /// Arenaからf32配列を確保。失敗時はnullを返す。
@@ -76,17 +76,15 @@ pub unsafe extern "C" fn am_ml_arena_alloc_f32(arena: *mut Arena, count: usize) 
     let Some(a) = (unsafe { arena.as_mut() }) else {
         return core::ptr::null_mut();
     };
-    match a.alloc::<f32>(count) {
-        Some(slice) => slice.as_mut_ptr(),
-        None => core::ptr::null_mut(),
-    }
+    a.alloc::<f32>(count)
+        .map_or(core::ptr::null_mut(), <[f32]>::as_mut_ptr)
 }
 
 // ============================================================================
 // TernaryWeight (8)
 // ============================================================================
 
-/// 三値重みを作成（values: i8配列 {-1,0,+1}、len = out_features * in_features）
+/// 三値重みを作成（values: i8配列 {-1,0,+1}、len = `out_features` * `in_features`）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_from_ternary(
     values: *const i8,
@@ -102,7 +100,7 @@ pub unsafe extern "C" fn am_ml_weight_from_ternary(
     Box::into_raw(Box::new(w))
 }
 
-/// TernaryWeightを解放
+/// `TernaryWeightを解放`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_free(w: *mut TernaryWeight) {
     if !w.is_null() {
@@ -113,31 +111,31 @@ pub unsafe extern "C" fn am_ml_weight_free(w: *mut TernaryWeight) {
 /// 出力特徴数
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_out_features(w: *const TernaryWeight) -> usize {
-    unsafe { w.as_ref() }.map_or(0, |w| w.out_features())
+    unsafe { w.as_ref() }.map_or(0, super::ops::TernaryWeight::out_features)
 }
 
 /// 入力特徴数
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_in_features(w: *const TernaryWeight) -> usize {
-    unsafe { w.as_ref() }.map_or(0, |w| w.in_features())
+    unsafe { w.as_ref() }.map_or(0, super::ops::TernaryWeight::in_features)
 }
 
 /// スケール係数
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_scale(w: *const TernaryWeight) -> f32 {
-    unsafe { w.as_ref() }.map_or(0.0, |w| w.scale())
+    unsafe { w.as_ref() }.map_or(0.0, super::ops::TernaryWeight::scale)
 }
 
 /// VRAM使用量（バイト）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_memory_bytes(w: *const TernaryWeight) -> usize {
-    unsafe { w.as_ref() }.map_or(0, |w| w.memory_bytes())
+    unsafe { w.as_ref() }.map_or(0, super::ops::TernaryWeight::memory_bytes)
 }
 
 /// FP32比の圧縮率
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_compression_ratio(w: *const TernaryWeight) -> f32 {
-    unsafe { w.as_ref() }.map_or(0.0, |w| w.compression_ratio())
+    unsafe { w.as_ref() }.map_or(0.0, super::ops::TernaryWeight::compression_ratio)
 }
 
 /// 指定位置の重みを取得（i8: -1, 0, +1）
@@ -183,7 +181,7 @@ pub unsafe extern "C" fn am_ml_kernel_from_ternary_scaled(
     Box::into_raw(Box::new(k))
 }
 
-/// TernaryWeightからビットパラレル形式に変換
+/// `TernaryWeightからビットパラレル形式に変換`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_from_weight(
     w: *const TernaryWeight,
@@ -195,7 +193,7 @@ pub unsafe extern "C" fn am_ml_kernel_from_weight(
     Box::into_raw(Box::new(k))
 }
 
-/// TernaryWeightKernelを解放
+/// `TernaryWeightKernelを解放`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_free(k: *mut TernaryWeightKernel) {
     if !k.is_null() {
@@ -206,31 +204,31 @@ pub unsafe extern "C" fn am_ml_kernel_free(k: *mut TernaryWeightKernel) {
 /// 出力特徴数
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_out_features(k: *const TernaryWeightKernel) -> usize {
-    unsafe { k.as_ref() }.map_or(0, |k| k.out_features())
+    unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::out_features)
 }
 
 /// 入力特徴数
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_in_features(k: *const TernaryWeightKernel) -> usize {
-    unsafe { k.as_ref() }.map_or(0, |k| k.in_features())
+    unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::in_features)
 }
 
 /// メモリ使用量（バイト）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_memory_bytes(k: *const TernaryWeightKernel) -> usize {
-    unsafe { k.as_ref() }.map_or(0, |k| k.memory_bytes())
+    unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::memory_bytes)
 }
 
 /// FP32比の圧縮率
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_compression_ratio(k: *const TernaryWeightKernel) -> f32 {
-    unsafe { k.as_ref() }.map_or(0.0, |k| k.compression_ratio())
+    unsafe { k.as_ref() }.map_or(0.0, super::ops::TernaryWeightKernel::compression_ratio)
 }
 
 /// 行あたりのu32ワード数
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_words_per_row(k: *const TernaryWeightKernel) -> usize {
-    unsafe { k.as_ref() }.map_or(0, |k| k.words_per_row())
+    unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::words_per_row)
 }
 
 // ============================================================================
@@ -281,7 +279,7 @@ pub unsafe extern "C" fn am_ml_matvec_kernel(
 }
 
 /// バッチ行列乗算（パック重み版）
-/// input: batch_size × in_features, output: batch_size × out_features
+/// input: `batch_size` × `in_features`, output: `batch_size` × `out_features`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_matmul_batch(
     input: *const f32,
@@ -371,7 +369,7 @@ pub unsafe extern "C" fn am_ml_tensor_scale(a: *const f32, s: f32, out: *mut f32
 
 /// コピー: `out[i] = a[i]`
 #[no_mangle]
-pub unsafe extern "C" fn am_ml_tensor_copy(a: *const f32, out: *mut f32, len: usize) {
+pub const unsafe extern "C" fn am_ml_tensor_copy(a: *const f32, out: *mut f32, len: usize) {
     if a.is_null() || out.is_null() {
         return;
     }
@@ -420,7 +418,7 @@ pub unsafe extern "C" fn am_ml_tensor_max(a: *const f32, len: usize) -> f32 {
     sa.iter().copied().fold(f32::NEG_INFINITY, f32::max)
 }
 
-/// ReLU: `out[i] = max(0, a[i])`
+/// `ReLU`: `out[i] = max(0, a[i])`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_relu(a: *const f32, out: *mut f32, len: usize) {
     if a.is_null() || out.is_null() {
@@ -433,7 +431,7 @@ pub unsafe extern "C" fn am_ml_tensor_relu(a: *const f32, out: *mut f32, len: us
     }
 }
 
-/// ReLUインプレース: `a[i] = max(0, a[i])`
+/// `ReLUインプレース`: `a[i] = max(0, a[i])`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_relu_inplace(a: *mut f32, len: usize) {
     if a.is_null() {
@@ -467,7 +465,7 @@ pub unsafe extern "C" fn am_ml_tensor_softmax(a: *const f32, out: *mut f32, len:
     }
 }
 
-/// RMSNorm: out = x / sqrt(mean(x²) + eps)
+/// `RMSNorm`: out = x / sqrt(mean(x²) + eps)
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_rms_norm(
     a: *const f32,
@@ -481,7 +479,7 @@ pub unsafe extern "C" fn am_ml_tensor_rms_norm(
     let sa = unsafe { core::slice::from_raw_parts(a, len) };
     let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
     let mut sum_sq: f32 = 0.0;
-    for &x in sa.iter() {
+    for &x in sa {
         sum_sq += x * x;
     }
     let inv_rms = 1.0 / (sum_sq / len as f32 + epsilon).sqrt();
@@ -490,7 +488,7 @@ pub unsafe extern "C" fn am_ml_tensor_rms_norm(
     }
 }
 
-/// LayerNorm: out = (x - mean) / sqrt(var + eps)
+/// `LayerNorm`: out = (x - mean) / sqrt(var + eps)
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_layer_norm(
     a: *const f32,
@@ -505,7 +503,7 @@ pub unsafe extern "C" fn am_ml_tensor_layer_norm(
     let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
     let mean = sa.iter().sum::<f32>() / len as f32;
     let mut var: f32 = 0.0;
-    for &x in sa.iter() {
+    for &x in sa {
         let d = x - mean;
         var += d * d;
     }
@@ -519,10 +517,10 @@ pub unsafe extern "C" fn am_ml_tensor_layer_norm(
 // BitLinear (5)
 // ============================================================================
 
-/// BitLinearレイヤーを作成
+/// `BitLinearレイヤーを作成`
 /// kernel: 所有権を移譲（呼び出し後にポインタを使用しないこと）
 /// bias: nullの場合はバイアスなし
-/// pre_norm: 0=false, 1=true
+/// `pre_norm`: 0=false, 1=true
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_bitlinear_new(
     kernel: *mut TernaryWeightKernel,
@@ -543,7 +541,7 @@ pub unsafe extern "C" fn am_ml_bitlinear_new(
     Box::into_raw(Box::new(layer))
 }
 
-/// BitLinearを解放
+/// `BitLinearを解放`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_bitlinear_free(layer: *mut BitLinear) {
     if !layer.is_null() {
@@ -572,13 +570,13 @@ pub unsafe extern "C" fn am_ml_bitlinear_forward(
 /// レイヤーのメモリ使用量（バイト）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_bitlinear_memory_bytes(layer: *const BitLinear) -> usize {
-    unsafe { layer.as_ref() }.map_or(0, |l| l.memory_bytes())
+    unsafe { layer.as_ref() }.map_or(0, super::layer::BitLinear::memory_bytes)
 }
 
 /// FP32比の圧縮率
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_bitlinear_compression_ratio(layer: *const BitLinear) -> f32 {
-    unsafe { layer.as_ref() }.map_or(0.0, |l| l.compression_ratio())
+    unsafe { layer.as_ref() }.map_or(0.0, super::layer::BitLinear::compression_ratio)
 }
 
 // ============================================================================
@@ -586,7 +584,7 @@ pub unsafe extern "C" fn am_ml_bitlinear_compression_ratio(layer: *const BitLine
 // ============================================================================
 
 /// FP32重みを三値量子化（BitNet b1.58方式）
-/// 返り値はTernaryWeightポインタ（am_ml_weight_freeで解放）
+/// `返り値はTernaryWeightポインタ（am_ml_weight_freeで解放`）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_quantize(
     weights: *const f32,
@@ -654,10 +652,208 @@ pub unsafe extern "C" fn am_ml_quantization_error_snr(
 }
 
 // ============================================================================
+// MicroModel (8)
+// ============================================================================
+
+use crate::micro_model::{CacheBudget, MicroModel, MicroModelBuilder};
+
+/// `MicroModel` を `MicroModelBuilder` で構築。
+/// `hidden_dims`: 中間層サイズの配列、`hidden_count`: 中間層数。
+/// ランダム重みで初期化（テスト・ベンチ用）。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_micro_model_build_random(
+    in_features: usize,
+    out_features: usize,
+    hidden_dims: *const usize,
+    hidden_count: usize,
+    budget_bytes: usize,
+    seed: u64,
+) -> *mut MicroModel {
+    let mut builder = MicroModelBuilder::new(
+        in_features,
+        out_features,
+        CacheBudget::custom(budget_bytes, "ffi"),
+    );
+    if !hidden_dims.is_null() && hidden_count > 0 {
+        let dims = unsafe { core::slice::from_raw_parts(hidden_dims, hidden_count) };
+        for &d in dims {
+            builder = builder.add_hidden(d);
+        }
+    }
+    Box::into_raw(Box::new(builder.build_random(seed)))
+}
+
+/// `MicroModel` を解放。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_micro_model_free(model: *mut MicroModel) {
+    if !model.is_null() {
+        drop(unsafe { Box::from_raw(model) });
+    }
+}
+
+/// 推論 (DPS)。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_micro_model_forward(
+    model: *const MicroModel,
+    input: *const f32,
+    in_len: usize,
+    output: *mut f32,
+    out_len: usize,
+) {
+    let (Some(m), false, false) = (unsafe { model.as_ref() }, input.is_null(), output.is_null())
+    else {
+        return;
+    };
+    let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+    let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
+    m.forward(inp, out);
+}
+
+/// K ステップ自己回帰推論 (DPS)。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_micro_model_predict_tokens(
+    model: *const MicroModel,
+    input: *const f32,
+    in_len: usize,
+    token_logits: *mut f32,
+    logits_len: usize,
+    steps: usize,
+) -> usize {
+    let (Some(m), false, false) = (
+        unsafe { model.as_ref() },
+        input.is_null(),
+        token_logits.is_null(),
+    ) else {
+        return 0;
+    };
+    let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+    let out = unsafe { core::slice::from_raw_parts_mut(token_logits, logits_len) };
+    m.predict_tokens(inp, out, steps)
+}
+
+/// メモリ使用量 (bytes)。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_micro_model_memory_bytes(model: *const MicroModel) -> usize {
+    unsafe { model.as_ref() }.map_or(0, MicroModel::memory_bytes)
+}
+
+/// 予算内に収まっているか。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_micro_model_fits_in_budget(model: *const MicroModel) -> c_int {
+    unsafe { model.as_ref() }.map_or(0, |m| c_int::from(m.fits_in_budget()))
+}
+
+/// パラメータ数。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_micro_model_param_count(model: *const MicroModel) -> usize {
+    unsafe { model.as_ref() }.map_or(0, MicroModel::param_count)
+}
+
+/// レイヤー数。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_micro_model_depth(model: *const MicroModel) -> usize {
+    unsafe { model.as_ref() }.map_or(0, MicroModel::depth)
+}
+
+// ============================================================================
+// CacheResidentDecoder (6)
+// ============================================================================
+
+use crate::speculative::{CacheResidentDecoder, DecoderConfig};
+
+/// `CacheResidentDecoder` を作成。
+/// `draft`: `MicroModel` の所有権を移譲。
+/// `verify_kernel`: 検証モデルの `TernaryWeightKernel` を移譲（1層）。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_cache_decoder_new(
+    draft: *mut MicroModel,
+    verify_kernel: *mut TernaryWeightKernel,
+    max_draft_tokens: usize,
+) -> *mut CacheResidentDecoder {
+    if draft.is_null() || verify_kernel.is_null() {
+        return core::ptr::null_mut();
+    }
+    let d = unsafe { *Box::from_raw(draft) };
+    let vk = unsafe { *Box::from_raw(verify_kernel) };
+    let v_layer = BitLinear::new(vk, None, false);
+    let config = DecoderConfig {
+        max_draft_tokens,
+        temperature: 1.0,
+    };
+    Box::into_raw(Box::new(CacheResidentDecoder::new(
+        d,
+        vec![v_layer],
+        config,
+    )))
+}
+
+/// `CacheResidentDecoder` を解放。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_cache_decoder_free(decoder: *mut CacheResidentDecoder) {
+    if !decoder.is_null() {
+        drop(unsafe { Box::from_raw(decoder) });
+    }
+}
+
+/// 1デコードステップ: L2ドラフト → DRAM検証 → 受理判定。
+/// 返り値: 受理トークン数。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_cache_decoder_step(
+    decoder: *const CacheResidentDecoder,
+    input: *const f32,
+    in_len: usize,
+    draft_buf: *mut f32,
+    draft_len: usize,
+    verify_buf: *mut f32,
+    verify_len: usize,
+) -> usize {
+    let (Some(dec), false, false, false) = (
+        unsafe { decoder.as_ref() },
+        input.is_null(),
+        draft_buf.is_null(),
+        verify_buf.is_null(),
+    ) else {
+        return 0;
+    };
+    let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+    let dbuf = unsafe { core::slice::from_raw_parts_mut(draft_buf, draft_len) };
+    let vbuf = unsafe { core::slice::from_raw_parts_mut(verify_buf, verify_len) };
+    let result = dec.decode_step(inp, dbuf, vbuf);
+    result.accepted
+}
+
+/// ドラフトモデルがキャッシュ予算内か。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_cache_decoder_fits_in_cache(
+    decoder: *const CacheResidentDecoder,
+) -> c_int {
+    unsafe { decoder.as_ref() }.map_or(0, |d| c_int::from(d.draft_fits_in_cache()))
+}
+
+/// ドラフトモデルのメモリ使用量 (bytes)。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_cache_decoder_draft_memory(
+    decoder: *const CacheResidentDecoder,
+) -> usize {
+    unsafe { decoder.as_ref() }.map_or(0, CacheResidentDecoder::draft_memory_bytes)
+}
+
+/// 検証モデルのメモリ使用量 (bytes)。
+#[no_mangle]
+pub unsafe extern "C" fn am_ml_cache_decoder_verify_memory(
+    decoder: *const CacheResidentDecoder,
+) -> usize {
+    unsafe { decoder.as_ref() }.map_or(0, CacheResidentDecoder::verify_memory_bytes)
+}
+
+// ============================================================================
 // Version (1)
 // ============================================================================
 
 /// ライブラリバージョン文字列（静的寿命、解放不要）
+///
+/// # Panics
+/// `VERSION` に null バイトが含まれている場合（通常ありえない）。
 #[no_mangle]
 pub extern "C" fn am_ml_version() -> *const c_char {
     static VERSION_C: OnceLock<std::ffi::CString> = OnceLock::new();
@@ -1010,5 +1206,97 @@ mod tests {
         let ptr = unsafe { am_ml_arena_alloc_f32(arena, 1000) };
         assert!(ptr.is_null());
         unsafe { am_ml_arena_free(arena) };
+    }
+
+    #[test]
+    fn test_micro_model_lifecycle() {
+        let hidden: [usize; 1] = [32];
+        let model =
+            unsafe { am_ml_micro_model_build_random(32, 32, hidden.as_ptr(), 1, 512 * 1024, 42) };
+        assert!(!model.is_null());
+
+        assert!(unsafe { am_ml_micro_model_fits_in_budget(model) } != 0);
+        assert!(unsafe { am_ml_micro_model_memory_bytes(model) } > 0);
+        assert!(unsafe { am_ml_micro_model_param_count(model) } > 0);
+        assert_eq!(unsafe { am_ml_micro_model_depth(model) }, 2);
+
+        let input = vec![1.0f32; 32];
+        let mut output = vec![0.0f32; 32];
+        unsafe {
+            am_ml_micro_model_forward(model, input.as_ptr(), 32, output.as_mut_ptr(), 32);
+        }
+        let sum: f32 = output.iter().map(|x| x.abs()).sum();
+        assert!(sum > 0.0, "output should be non-zero");
+
+        unsafe { am_ml_micro_model_free(model) };
+    }
+
+    #[test]
+    fn test_micro_model_predict_tokens() {
+        let model =
+            unsafe { am_ml_micro_model_build_random(16, 16, core::ptr::null(), 0, 512 * 1024, 1) };
+
+        let input = vec![1.0f32; 16];
+        let mut logits = vec![0.0f32; 16 * 3];
+        let steps = unsafe {
+            am_ml_micro_model_predict_tokens(model, input.as_ptr(), 16, logits.as_mut_ptr(), 48, 3)
+        };
+        assert_eq!(steps, 3);
+
+        unsafe { am_ml_micro_model_free(model) };
+    }
+
+    #[test]
+    fn test_cache_decoder_lifecycle() {
+        let hidden: [usize; 1] = [16];
+        let draft =
+            unsafe { am_ml_micro_model_build_random(16, 16, hidden.as_ptr(), 1, 512 * 1024, 42) };
+        let values = vec![1i8; 16 * 16];
+        let vk = unsafe { am_ml_kernel_from_ternary(values.as_ptr(), values.len(), 16, 16) };
+
+        let decoder = unsafe { am_ml_cache_decoder_new(draft, vk, 3) };
+        assert!(!decoder.is_null());
+
+        assert!(unsafe { am_ml_cache_decoder_fits_in_cache(decoder) } != 0);
+        assert!(unsafe { am_ml_cache_decoder_draft_memory(decoder) } > 0);
+        assert!(unsafe { am_ml_cache_decoder_verify_memory(decoder) } > 0);
+
+        let input = vec![1.0f32; 16];
+        let mut draft_buf = vec![0.0f32; 16 * 3];
+        let mut verify_buf = vec![0.0f32; 16 * 3];
+        let accepted = unsafe {
+            am_ml_cache_decoder_step(
+                decoder,
+                input.as_ptr(),
+                16,
+                draft_buf.as_mut_ptr(),
+                48,
+                verify_buf.as_mut_ptr(),
+                48,
+            )
+        };
+        assert!(accepted >= 1);
+
+        unsafe { am_ml_cache_decoder_free(decoder) };
+    }
+
+    #[test]
+    fn test_micro_model_null_safety() {
+        unsafe {
+            am_ml_micro_model_free(core::ptr::null_mut());
+            assert_eq!(am_ml_micro_model_memory_bytes(core::ptr::null()), 0);
+            assert_eq!(am_ml_micro_model_fits_in_budget(core::ptr::null()), 0);
+            assert_eq!(am_ml_micro_model_param_count(core::ptr::null()), 0);
+            assert_eq!(am_ml_micro_model_depth(core::ptr::null()), 0);
+
+            am_ml_cache_decoder_free(core::ptr::null_mut());
+            assert_eq!(am_ml_cache_decoder_fits_in_cache(core::ptr::null()), 0);
+            assert_eq!(am_ml_cache_decoder_draft_memory(core::ptr::null()), 0);
+            assert_eq!(am_ml_cache_decoder_verify_memory(core::ptr::null()), 0);
+
+            assert!(
+                am_ml_cache_decoder_new(core::ptr::null_mut(), core::ptr::null_mut(), 3).is_null()
+            );
+        }
     }
 }

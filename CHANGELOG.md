@@ -2,6 +2,26 @@
 
 All notable changes to ALICE-ML will be documented in this file.
 
+## [0.2.0] - 2026-03-06
+
+### Added
+- `micro_model` — L2 Cache-Resident Micro Model (`MicroModel`, `MicroModelBuilder`, `CacheBudget`)
+  - RasPi 5 L2 (512KB) に全重みを常駐、~100 GB/s で推論
+  - `CacheBudget` プリセット (l2_rpi5, l2_rpi5_dual, l2_256k, custom)
+  - `build_random()` で決定的テストビルド (LCG64)
+- `speculative` — `CacheResidentDecoder` (L2 ドラフト + DRAM 検証)
+- `speculative` — `SpeculativeDecoder` (ドラフトモデル先読み + バッチ検証)
+- `streaming` — `LayerStreamer` (オンデマンドレイヤーロード + LRU エビクション)
+- FFI: 14 新関数 (`am_ml_micro_model_*` 8個, `am_ml_cache_decoder_*` 6個) → 合計 65 関数
+- Unity C#: 14 新 DllImport + 2 RAII handles (`MicroModelHandle`, `CacheDecoderHandle`) → 合計 65 DllImport + 9 handles
+- UE5 C++: 14 新 extern C + 2 RAII handles (`MicroModelPtr`, `CacheDecoderPtr`) → 合計 65 extern C + 9 handles
+- 235 tests (205 core + 24 FFI + 6 doc-tests)
+
+### Fixed
+- `cargo clippy --all-features -- -W clippy::pedantic -W clippy::nursery` → 0 warnings (53 warnings 修正)
+- `cargo fmt` → 0 diff
+- `cargo doc --no-deps` → 0 warnings
+
 ## [0.1.1] - 2026-03-04
 
 ### Added

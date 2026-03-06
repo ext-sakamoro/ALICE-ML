@@ -62,22 +62,22 @@ impl PyTernaryWeight {
     }
 
     #[getter]
-    fn out_features(&self) -> usize {
+    const fn out_features(&self) -> usize {
         self.inner.out_features()
     }
 
     #[getter]
-    fn in_features(&self) -> usize {
+    const fn in_features(&self) -> usize {
         self.inner.in_features()
     }
 
     #[getter]
-    fn scale(&self) -> f32 {
+    const fn scale(&self) -> f32 {
         self.inner.scale()
     }
 
     #[getter]
-    fn memory_bytes(&self) -> usize {
+    const fn memory_bytes(&self) -> usize {
         self.inner.memory_bytes()
     }
 
@@ -205,12 +205,12 @@ impl PyTernaryWeightKernel {
     }
 
     #[getter]
-    fn out_features(&self) -> usize {
+    const fn out_features(&self) -> usize {
         self.inner.out_features()
     }
 
     #[getter]
-    fn in_features(&self) -> usize {
+    const fn in_features(&self) -> usize {
         self.inner.in_features()
     }
 
@@ -263,23 +263,23 @@ pub struct PyQuantStats {
 #[pymethods]
 impl PyQuantStats {
     #[getter]
-    fn plus_count(&self) -> usize {
+    const fn plus_count(&self) -> usize {
         self.inner.plus_count
     }
     #[getter]
-    fn minus_count(&self) -> usize {
+    const fn minus_count(&self) -> usize {
         self.inner.minus_count
     }
     #[getter]
-    fn zero_count(&self) -> usize {
+    const fn zero_count(&self) -> usize {
         self.inner.zero_count
     }
     #[getter]
-    fn scale(&self) -> f32 {
+    const fn scale(&self) -> f32 {
         self.inner.scale
     }
     #[getter]
-    fn mae(&self) -> f32 {
+    const fn mae(&self) -> f32 {
         self.inner.mae
     }
     #[getter]
@@ -291,7 +291,7 @@ impl PyQuantStats {
         self.inner.effective_bits()
     }
     #[getter]
-    fn original_range(&self) -> (f32, f32) {
+    const fn original_range(&self) -> (f32, f32) {
         self.inner.original_range
     }
 

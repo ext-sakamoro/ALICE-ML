@@ -7,7 +7,7 @@
 | 項目 | 値 |
 |------|-----|
 | クレート名 | `alice-ml` |
-| バージョン | 0.1.1 |
+| バージョン | 0.2.0 |
 | ライセンス | AGPL-3.0 |
 | リポジトリ | `ext-sakamoro/ALICE-ML` |
 | Eco-Systemブリッジ | bridge_ml.rs |
@@ -23,7 +23,7 @@ ALICE-KARIKARI.md「100/100品質基準」参照。clippy基準: `pedantic+nurse
 | 指標 | 値 |
 |------|-----|
 | clippy (pedantic+nursery) | 0 warnings |
-| テスト数 | 211 |
+| テスト数 | 235 |
 | fmt | clean |
 
 ## Eco-System パイプライン
