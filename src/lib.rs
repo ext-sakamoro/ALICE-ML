@@ -110,11 +110,14 @@
 extern crate alloc;
 
 pub mod arena;
+pub mod dataset;
 pub mod error_analysis;
 pub mod layer;
+pub mod model_io;
 pub mod ops;
 pub mod quantize;
 pub mod tensor;
+pub mod training;
 
 #[cfg(all(target_arch = "aarch64", feature = "neon"))]
 pub mod neon;
