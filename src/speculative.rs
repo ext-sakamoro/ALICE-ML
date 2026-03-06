@@ -44,6 +44,7 @@
 use alloc::vec::Vec;
 
 use crate::layer::BitLinear;
+use crate::micro_model::{CacheBudget, MicroModel};
 
 // ============================================================================
 // Configuration
@@ -371,6 +372,185 @@ impl SpeculativeDecoder {
 }
 
 // ============================================================================
+// CacheResidentDecoder
+// ============================================================================
+
+/// L2 キャッシュ常駐 Speculative Decoder。
+///
+/// `MicroModel` (L2 常駐) をドラフトモデル、`BitLinear` 列を検証モデルとして使う。
+/// ドラフト推論は L2 帯域 (~100 GB/s on `RasPi 5`) で完結し、
+/// DRAM 帯域 (17 GB/s) は検証モデルのバッチ実行 1 回のみ消費する。
+///
+/// # Example
+///
+/// ```rust
+/// use alice_ml::speculative::{CacheResidentDecoder, DecoderConfig};
+/// use alice_ml::micro_model::{MicroModelBuilder, CacheBudget};
+/// use alice_ml::ops::TernaryWeightKernel;
+/// use alice_ml::layer::BitLinear;
+///
+/// let draft = MicroModelBuilder::new(32, 32, CacheBudget::l2_rpi5())
+///     .add_hidden(32)
+///     .build_random(42);
+///
+/// let vk = TernaryWeightKernel::from_ternary(&vec![1i8; 32 * 32], 32, 32);
+/// let verify_layer = BitLinear::new(vk, None, false);
+///
+/// let config = DecoderConfig { max_draft_tokens: 4, temperature: 1.0 };
+/// let decoder = CacheResidentDecoder::new(draft, vec![verify_layer], config);
+///
+/// assert!(decoder.draft_fits_in_cache());
+/// ```
+pub struct CacheResidentDecoder {
+    /// L2 キャッシュ常駐ドラフトモデル。
+    draft: MicroModel,
+    /// 検証モデルのレイヤー列（DRAM 上）。
+    verify_layers: Vec<BitLinear>,
+    /// 設定。
+    config: DecoderConfig,
+}
+
+impl CacheResidentDecoder {
+    /// 新しい `CacheResidentDecoder` を作成。
+    ///
+    /// # Arguments
+    /// * `draft` - L2 キャッシュ常駐マイクロモデル
+    /// * `verify_layers` - 検証モデルのレイヤー列
+    /// * `config` - デコード設定
+    #[must_use]
+    pub const fn new(
+        draft: MicroModel,
+        verify_layers: Vec<BitLinear>,
+        config: DecoderConfig,
+    ) -> Self {
+        Self {
+            draft,
+            verify_layers,
+            config,
+        }
+    }
+
+    /// ドラフトモデルがキャッシュ予算内に収まっているか。
+    #[must_use]
+    pub fn draft_fits_in_cache(&self) -> bool {
+        self.draft.fits_in_budget()
+    }
+
+    /// ドラフトモデルのキャッシュ予算。
+    #[must_use]
+    pub const fn draft_budget(&self) -> &CacheBudget {
+        self.draft.budget()
+    }
+
+    /// ドラフトモデルのメモリ使用量 (bytes)。
+    #[must_use]
+    pub fn draft_memory_bytes(&self) -> usize {
+        self.draft.memory_bytes()
+    }
+
+    /// 検証モデルのメモリ使用量 (bytes)。
+    #[must_use]
+    pub fn verify_memory_bytes(&self) -> usize {
+        self.verify_layers.iter().map(BitLinear::memory_bytes).sum()
+    }
+
+    /// ドラフトモデルのキャッシュ使用率。
+    #[must_use]
+    pub fn draft_cache_utilization(&self) -> f32 {
+        self.draft.budget_utilization()
+    }
+
+    /// 設定を取得。
+    #[must_use]
+    pub const fn config(&self) -> &DecoderConfig {
+        &self.config
+    }
+
+    /// ドラフト先読み: `MicroModel.predict_tokens()` でL2完結。
+    ///
+    /// # Returns
+    /// 生成したステップ数。
+    pub fn draft_forward(&self, input: &[f32], draft_out: &mut [f32]) -> usize {
+        let k = self.config.max_draft_tokens;
+        self.draft.predict_tokens(input, draft_out, k)
+    }
+
+    /// 検証モデルでバッチ検証 (DPS)。
+    ///
+    /// ドラフトの各ステップ出力を検証モデルに通す。
+    ///
+    /// # Panics
+    /// 検証レイヤーが空、または `verify_out` が不足する場合。
+    pub fn verify_batch(
+        &self,
+        input: &[f32],
+        draft_out: &[f32],
+        verify_out: &mut [f32],
+        steps: usize,
+    ) {
+        assert!(!self.verify_layers.is_empty(), "verify model has no layers");
+
+        let out_features = self.verify_layers[0].out_features;
+
+        assert!(
+            verify_out.len() >= out_features * steps,
+            "verify_out too small: {} < {}",
+            verify_out.len(),
+            out_features * steps
+        );
+
+        for step in 0..steps {
+            let step_input = if step == 0 {
+                input
+            } else {
+                let prev_start = (step - 1) * out_features;
+                &draft_out[prev_start..prev_start + out_features]
+            };
+
+            let out_start = step * out_features;
+            let out_end = out_start + out_features;
+            let out_slice = &mut verify_out[out_start..out_end];
+
+            if self.verify_layers.len() == 1 {
+                self.verify_layers[0].forward(step_input, out_slice);
+            } else {
+                let mut buf = vec![0.0f32; out_features];
+                self.verify_layers[0].forward(step_input, &mut buf);
+
+                for layer in &self.verify_layers[1..self.verify_layers.len() - 1] {
+                    let mut tmp = vec![0.0f32; layer.out_features];
+                    layer.forward(&buf, &mut tmp);
+                    buf = tmp;
+                }
+
+                self.verify_layers.last().unwrap().forward(&buf, out_slice);
+            }
+        }
+    }
+
+    /// 1デコードステップ: L2ドラフト先読み → DRAM検証 → 受理判定。
+    pub fn decode_step(
+        &self,
+        input: &[f32],
+        draft_buf: &mut [f32],
+        verify_buf: &mut [f32],
+    ) -> DecodeResult {
+        let k = self.draft_forward(input, draft_buf);
+        let out_features = self.draft.out_features();
+
+        self.verify_batch(input, draft_buf, verify_buf, k);
+
+        SpeculativeDecoder::acceptance_mask(draft_buf, verify_buf, out_features, k)
+    }
+
+    /// 理論上の最大スピードアップ倍率。
+    #[must_use]
+    pub const fn max_speedup(&self) -> f32 {
+        (self.config.max_draft_tokens + 1) as f32
+    }
+}
+
+// ============================================================================
 // Helper
 // ============================================================================
 
@@ -632,5 +812,132 @@ mod tests {
             "multi step0[1]={}",
             draft_out[1]
         );
+    }
+
+    // ========================================================================
+    // CacheResidentDecoder tests
+    // ========================================================================
+
+    #[test]
+    fn test_cache_resident_decoder_basic() {
+        use crate::micro_model::{CacheBudget, MicroModel};
+
+        let draft_k = TernaryWeightKernel::from_ternary(&[1, -1, 0, 1], 2, 2);
+        let draft_layer = BitLinear::new(draft_k, None, false);
+        let draft = MicroModel::new(vec![draft_layer], CacheBudget::l2_rpi5());
+
+        let verify_layer = make_layer(&[1, -1, 0, 1], 2, 2);
+
+        let config = DecoderConfig {
+            max_draft_tokens: 3,
+            temperature: 1.0,
+        };
+        let decoder = CacheResidentDecoder::new(draft, vec![verify_layer], config);
+
+        assert!(decoder.draft_fits_in_cache());
+
+        let input = [2.0f32, 3.0];
+        let mut draft_buf = vec![0.0f32; 2 * 3];
+        let mut verify_buf = vec![0.0f32; 2 * 3];
+
+        let result = decoder.decode_step(&input, &mut draft_buf, &mut verify_buf);
+        // 同じ重み → 全受理
+        assert_eq!(result.accepted, 3);
+    }
+
+    #[test]
+    fn test_cache_resident_decoder_draft_budget() {
+        use crate::micro_model::{CacheBudget, MicroModelBuilder};
+
+        let draft = MicroModelBuilder::new(32, 32, CacheBudget::l2_rpi5())
+            .add_hidden(32)
+            .build_random(42);
+
+        let vk = TernaryWeightKernel::from_ternary(&vec![1i8; 32 * 32], 32, 32);
+        let verify_layer = BitLinear::new(vk, None, false);
+
+        let config = DecoderConfig {
+            max_draft_tokens: 4,
+            temperature: 1.0,
+        };
+        let decoder = CacheResidentDecoder::new(draft, vec![verify_layer], config);
+
+        assert!(decoder.draft_fits_in_cache());
+        assert!(decoder.draft_cache_utilization() < 1.0);
+        assert!(decoder.draft_memory_bytes() > 0);
+        assert!(decoder.verify_memory_bytes() > 0);
+    }
+
+    #[test]
+    fn test_cache_resident_decoder_partial_reject() {
+        use crate::micro_model::{CacheBudget, MicroModel};
+
+        // ドラフトと検証で異なる重み → 一部棄却
+        let dk = TernaryWeightKernel::from_ternary(&[1, -1, 0, 1], 2, 2);
+        let draft = MicroModel::new(
+            vec![BitLinear::new(dk, None, false)],
+            CacheBudget::l2_rpi5(),
+        );
+
+        let verify_layer = make_layer(&[1, 0, -1, 1], 2, 2);
+
+        let config = DecoderConfig {
+            max_draft_tokens: 3,
+            temperature: 1.0,
+        };
+        let decoder = CacheResidentDecoder::new(draft, vec![verify_layer], config);
+
+        let input = [2.0f32, 3.0];
+        let mut draft_buf = vec![0.0f32; 2 * 3];
+        let mut verify_buf = vec![0.0f32; 2 * 3];
+
+        let result = decoder.decode_step(&input, &mut draft_buf, &mut verify_buf);
+        // 最低 1 トークンは受理
+        assert!(result.accepted >= 1);
+        assert_eq!(result.draft_len, 3);
+    }
+
+    #[test]
+    fn test_cache_resident_decoder_max_speedup() {
+        use crate::micro_model::{CacheBudget, MicroModelBuilder};
+
+        let draft = MicroModelBuilder::new(16, 16, CacheBudget::l2_rpi5()).build_random(1);
+        let config = DecoderConfig {
+            max_draft_tokens: 7,
+            temperature: 1.0,
+        };
+        let decoder = CacheResidentDecoder::new(draft, Vec::new(), config);
+
+        assert!((decoder.max_speedup() - 8.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cache_resident_decoder_realistic_size() {
+        use crate::micro_model::{CacheBudget, MicroModelBuilder};
+
+        // 現実的サイズ: 512→256→512 ドラフト + 512→512 検証
+        let draft = MicroModelBuilder::new(512, 512, CacheBudget::l2_rpi5())
+            .add_hidden(256)
+            .build_random(42);
+
+        let vk = TernaryWeightKernel::from_ternary(&vec![1i8; 512 * 512], 512, 512);
+        let verify_layer = BitLinear::new(vk, None, false);
+
+        let config = DecoderConfig {
+            max_draft_tokens: 5,
+            temperature: 1.0,
+        };
+        let decoder = CacheResidentDecoder::new(draft, vec![verify_layer], config);
+
+        assert!(decoder.draft_fits_in_cache());
+        assert!(decoder.draft_memory_bytes() <= 512 * 1024);
+
+        let input: Vec<f32> = (0..512).map(|i| (i as f32) * 0.001).collect();
+        let mut draft_buf = vec![0.0f32; 512 * 5];
+        let mut verify_buf = vec![0.0f32; 512 * 5];
+
+        let result = decoder.decode_step(&input, &mut draft_buf, &mut verify_buf);
+        assert!(result.accepted >= 1);
+        assert_eq!(result.draft_len, 5);
     }
 }

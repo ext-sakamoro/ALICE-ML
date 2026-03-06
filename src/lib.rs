@@ -122,6 +122,7 @@ pub mod training;
 #[cfg(all(target_arch = "aarch64", feature = "neon"))]
 pub mod neon;
 
+pub mod micro_model;
 pub mod speculative;
 pub mod streaming;
 
@@ -190,8 +191,11 @@ pub use error_analysis::{
     NetworkErrorReport,
 };
 
+// Micro Model (L2 cache-resident draft)
+pub use micro_model::{CacheBudget, MicroModel, MicroModelBuilder};
+
 // Speculative Decoding
-pub use speculative::{DecodeResult, DecoderConfig, SpeculativeDecoder};
+pub use speculative::{CacheResidentDecoder, DecodeResult, DecoderConfig, SpeculativeDecoder};
 
 // Weight Streaming
 pub use streaming::{LayerStreamer, SlotState, StreamerConfig, StreamerStats};
