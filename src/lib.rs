@@ -122,6 +122,9 @@ pub mod training;
 #[cfg(all(target_arch = "aarch64", feature = "neon"))]
 pub mod neon;
 
+pub mod speculative;
+pub mod streaming;
+
 #[cfg(feature = "db")]
 pub mod db_bridge;
 
@@ -186,6 +189,12 @@ pub use error_analysis::{
     compute_layer_error_propagation, CumulativeQuantError, LayerConfig, LayerErrorStats,
     NetworkErrorReport,
 };
+
+// Speculative Decoding
+pub use speculative::{DecodeResult, DecoderConfig, SpeculativeDecoder};
+
+// Weight Streaming
+pub use streaming::{LayerStreamer, SlotState, StreamerConfig, StreamerStats};
 
 // ============================================================================
 // Ternary Encoding
