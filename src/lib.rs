@@ -123,6 +123,7 @@ pub mod training;
 pub mod neon;
 
 pub mod micro_model;
+pub mod moe;
 pub mod speculative;
 pub mod streaming;
 
@@ -199,6 +200,9 @@ pub use speculative::{CacheResidentDecoder, DecodeResult, DecoderConfig, Specula
 
 // Weight Streaming
 pub use streaming::{LayerStreamer, SlotState, StreamerConfig, StreamerStats};
+
+// MoE Expert Router
+pub use moe::{ExpertChoice, ExpertSelector, MoeRouter};
 
 // ============================================================================
 // Ternary Encoding
