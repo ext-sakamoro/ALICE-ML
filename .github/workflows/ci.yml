@@ -62,7 +62,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - run: cargo clippy --lib --tests --features simd -- -W clippy::all -W clippy::pedantic
+      - run: cargo clippy --lib --tests --features simd -- -W clippy::pedantic -W clippy::nursery -D warnings
 
   fmt:
     runs-on: ubuntu-latest
