@@ -1,6 +1,6 @@
-//! Mixture-of-Experts (MoE) ルーター
+//! Mixture-of-Experts (`MoE`) ルーター
 //!
-//! Transformer MoEレイヤーのエキスパート選択を実装。
+//! Transformer `MoE` レイヤーのエキスパート選択を実装。
 //! Top-K gating で各トークンに最適なエキスパートを選択する。
 //!
 //! # アーキテクチャ
@@ -33,17 +33,17 @@ use crate::ops::{ternary_matvec, TernaryWeight};
 /// エキスパート選択結果
 #[derive(Debug, Clone, Copy)]
 pub struct ExpertChoice {
-    /// エキスパートID (0..num_experts)
+    /// エキスパートID (`0..num_experts`)
     pub expert_id: usize,
     /// ゲート重み（softmax後）
     pub weight: f32,
 }
 
-/// MoE ゲートルーター
+/// `MoE` ゲートルーター
 ///
 /// ternary重みでゲーティングスコアを計算し、Top-K選択を行う。
 pub struct MoeRouter {
-    /// ゲート重み: hidden_dim → num_experts
+    /// ゲート重み: `hidden_dim` → `num_experts`
     gate_weights: TernaryWeight,
     /// エキスパート数
     num_experts: usize,
@@ -71,6 +71,10 @@ impl MoeRouter {
     ///
     /// `gate_buf` はゲーティングスコア用ワークバッファ（長さ = `num_experts`）。
     /// DPSパターンでヒープ確保を回避。
+    ///
+    /// # Panics
+    ///
+    /// `gate_buf.len() < num_experts` の場合パニック。
     pub fn route(&self, input: &[f32], gate_buf: &mut [f32]) -> Vec<ExpertChoice> {
         assert!(gate_buf.len() >= self.num_experts, "gate_buf too small");
 
@@ -205,13 +209,7 @@ fn softmax_inplace(x: &mut [f32]) {
 /// 高速exp近似（range reduction + 3次多項式）
 #[inline(always)]
 fn fast_exp(x: f32) -> f32 {
-    let clamped = if x < -87.0 {
-        -87.0_f32
-    } else if x > 88.0 {
-        88.0_f32
-    } else {
-        x
-    };
+    let clamped = x.clamp(-87.0_f32, 88.0_f32);
     let val = clamped * core::f32::consts::LOG2_E;
     let ipart = floor_f32(val);
     let fpart = val - ipart;
@@ -223,7 +221,7 @@ fn fast_exp(x: f32) -> f32 {
     exp_n * p
 }
 
-/// no_std互換floor
+/// `no_std` 互換 floor
 #[inline(always)]
 fn floor_f32(x: f32) -> f32 {
     let i = x as i32;
