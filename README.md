@@ -405,9 +405,9 @@ println!("Hit rate: {:.1}%", streamer.stats().hit_rate() * 100.0);
 
 | Feature | Tests |
 |---------|-------|
-| Core (default) | 155 unit + 6 doc |
+| Core (default) | 216 |
 | FFI (`ffi`) | +74 |
-| **Total** | **235** |
+| **Total** | **290** |
 
 ## Roadmap
 
@@ -423,7 +423,7 @@ println!("Hit rate: {:.1}%", streamer.stats().hit_rate() * 100.0);
 - [x] Speculative Decoding (draft lookahead + batch verification)
 - [x] L2 Cache-Resident Micro Model (MicroModel + CacheResidentDecoder)
 - [x] Weight Streaming (on-demand layer loading with LRU eviction + prefetch)
-- [ ] MoE Expert Router with ALICE-Cache Oracle integration
+- [x] MoE Expert Router (`MoeRouter` + `ExpertSelector` with Markov prediction)
 - [ ] Knowledge distillation from PyTorch models
 - [ ] `.atml` model format with mmap loading
 
