@@ -564,6 +564,7 @@ pub fn ternary_matmul_alloc(input: &Tensor, weights: &TernaryWeight) -> crate::t
 // ============================================================================
 
 #[cfg(all(target_arch = "x86_64", feature = "simd"))]
+/// AVX2-accelerated ternary matrix operations.
 pub mod simd {
     use super::*;
     use core::arch::x86_64::*;
@@ -580,7 +581,7 @@ pub mod simd {
         let in_features = weights.in_features();
         let words_per_row = weights.words_per_row;
         let scale = weights.scale;
-        let scale_vec = _mm256_set1_ps(scale);
+        let _scale_vec = _mm256_set1_ps(scale);
 
         for (row, out) in output.iter_mut().enumerate() {
             let mut acc_plus = _mm256_setzero_ps();
