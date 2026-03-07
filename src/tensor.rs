@@ -510,6 +510,7 @@ pub fn tensor_copy(src: &Tensor, dst: &mut Tensor) {
 ///
 /// Reference: Schraudolph, N.N. (1999). "A Fast, Compact Approximation of the
 /// Exponential Function." *Neural Computation*, 11(4), 853-862.
+#[allow(clippy::missing_const_for_fn)] // clamp/mul_add are not const
 #[inline(always)]
 fn fast_exp(x: f32) -> f32 {
     // Clamp to avoid overflow (> 88) and flush-to-zero (< -87)
