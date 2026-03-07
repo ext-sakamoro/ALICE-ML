@@ -577,6 +577,12 @@ pub mod simd {
     /// AVX2 ternary matvec using masked blending
     ///
     /// Processes 8 floats at a time with branchless mask operations.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure the CPU supports AVX2 (checked via `has_avx2()`).
+    /// `input.len()` must equal `weights.in_features()` and `output.len()` must
+    /// equal `weights.out_features()`.
     #[target_feature(enable = "avx2")]
     pub unsafe fn ternary_matvec_avx2(
         input: &[f32],
@@ -650,7 +656,7 @@ pub mod simd {
     /// Zero branches, zero scalar-to-vector transitions.
     ///
     /// Algorithm:
-    /// 1. Broadcast mask_bits to all 8 lanes
+    /// 1. Broadcast `mask_bits` to all 8 lanes
     /// 2. AND with bit positions [1,2,4,8,16,32,64,128]
     /// 3. Compare equal → 0xFFFFFFFF where bit was set
     #[inline(always)]
@@ -695,7 +701,7 @@ pub mod simd {
         if has_avx2() {
             unsafe { ternary_matvec_avx2(input, weights, output) }
         } else {
-            super::ternary_matvec_kernel(input, weights, output)
+            super::ternary_matvec_kernel(input, weights, output);
         }
     }
 }
@@ -711,7 +717,7 @@ pub mod simd {
 ///
 /// Values: 0 = unknown, 1 = not available, 2 = available.
 ///
-/// This function is `pub(crate)` so that `tensor.rs` and other sibling modules
+/// This function is `pub(crate)` so that [`tensor`] and other sibling modules
 /// can share the same cached detection without duplicating the AtomicU8.
 #[cfg(all(target_arch = "x86_64", feature = "simd", feature = "std"))]
 #[inline]
