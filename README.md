@@ -334,11 +334,21 @@ ALICE-ML combines multiple techniques to maximize throughput on bandwidth-limite
 │       ▼                                                │
 │  [Arena Allocator]  Zero heap allocation in hot path    │
 │                                                        │
-│  Performance (Raspberry Pi 5, 8GB):                    │
+│  Performance (Raspberry Pi 5, 8GB, 17 GB/s):           │
 │    Dense 24B:     5-8 tok/s                            │
 │    MoE 8x7B:     10-15 tok/s                           │
 │    MoE+Spec:     15-25 tok/s                           │
 │    Streamed 70B: ~0.2 tok/s (SSD-bound, but it runs!)  │
+│                                                        │
+│  Performance (Mac Mini M4, 16GB, 120 GB/s):            │
+│    Dense 24B:     35-50 tok/s                          │
+│    MoE 8x7B:     70-100 tok/s                          │
+│    MoE+Spec:     100-150 tok/s                         │
+│                                                        │
+│  Performance (Mac Mini M4 Pro, 64GB, 273 GB/s):        │
+│    Dense 24B:     80-120 tok/s                         │
+│    Dense 70B:     30-50 tok/s (全モデルRAM内)          │
+│    MoE 8x7B:     150-200 tok/s                        │
 └──────────────────────────────────────────────────────┘
 ```
 
