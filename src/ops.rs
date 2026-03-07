@@ -566,7 +566,7 @@ pub fn ternary_matmul_alloc(input: &Tensor, weights: &TernaryWeight) -> crate::t
 #[cfg(all(target_arch = "x86_64", feature = "simd"))]
 /// AVX2-accelerated ternary matrix operations.
 pub mod simd {
-    use super::*;
+    use super::{has_avx2, ternary_matvec_kernel, TernaryWeightKernel};
     use core::arch::x86_64::{
         __m256, _mm256_add_ps, _mm256_and_si256, _mm256_blendv_ps, _mm256_castps256_ps128,
         _mm256_castsi256_ps, _mm256_cmpeq_epi32, _mm256_extractf128_ps, _mm256_loadu_ps,
@@ -811,6 +811,7 @@ pub const fn extract_minus_mask(byte: u8) -> u8 {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(clippy::wildcard_imports)]
 mod tests {
     use super::*;
 
