@@ -521,7 +521,10 @@ println!("Hit rate: {:.1}%", streamer.stats().hit_rate() * 100.0);
 
 ## License
 
-AGPL-3.0
+Dual Licensed:
+
+- **AGPL-3.0** — Open source / personal use ([LICENSE](LICENSE))
+- **Commercial** — Proprietary use without AGPL obligations ([LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md))
 
 ## Author
 

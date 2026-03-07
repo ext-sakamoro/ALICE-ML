@@ -8,7 +8,7 @@
 |------|-----|
 | クレート名 | `alice-ml` |
 | バージョン | 0.2.0 |
-| ライセンス | AGPL-3.0 |
+| ライセンス | AGPL-3.0 OR Commercial (デュアルライセンス) |
 | リポジトリ | `ext-sakamoro/ALICE-ML` |
 | Eco-Systemブリッジ | bridge_ml.rs |
 
