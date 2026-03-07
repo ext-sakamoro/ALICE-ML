@@ -567,7 +567,12 @@ pub fn ternary_matmul_alloc(input: &Tensor, weights: &TernaryWeight) -> crate::t
 /// AVX2-accelerated ternary matrix operations.
 pub mod simd {
     use super::*;
-    use core::arch::x86_64::*;
+    use core::arch::x86_64::{
+        __m256, _mm256_add_ps, _mm256_and_si256, _mm256_blendv_ps, _mm256_castps256_ps128,
+        _mm256_castsi256_ps, _mm256_cmpeq_epi32, _mm256_extractf128_ps, _mm256_loadu_ps,
+        _mm256_set1_epi32, _mm256_set1_ps, _mm256_setr_epi32, _mm256_setzero_ps, _mm_add_ps,
+        _mm_add_ss, _mm_cvtss_f32, _mm_movehl_ps, _mm_shuffle_ps,
+    };
 
     /// AVX2 ternary matvec using masked blending
     ///
