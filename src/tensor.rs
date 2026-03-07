@@ -200,7 +200,9 @@ pub fn tensor_scale(a: &Tensor, scalar: f32, out: &mut Tensor) {
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
     if crate::ops::has_avx2() {
-        use core::arch::x86_64::*;
+        use core::arch::x86_64::{
+            _mm256_loadu_ps, _mm256_mul_ps, _mm256_set1_ps, _mm256_storeu_ps,
+        };
         let n = a.data.len();
         let chunks = n / 8;
         let remainder = n % 8;
@@ -235,7 +237,9 @@ pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
     if crate::ops::has_avx2() {
-        use core::arch::x86_64::*;
+        use core::arch::x86_64::{
+            _mm256_loadu_ps, _mm256_max_ps, _mm256_setzero_ps, _mm256_storeu_ps,
+        };
         let n = a.data.len();
         let chunks = n / 8;
         let remainder = n % 8;
@@ -268,7 +272,9 @@ pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
 pub fn tensor_relu_inplace(a: &mut Tensor) {
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
     if crate::ops::has_avx2() {
-        use core::arch::x86_64::*;
+        use core::arch::x86_64::{
+            _mm256_loadu_ps, _mm256_max_ps, _mm256_setzero_ps, _mm256_storeu_ps,
+        };
         let n = a.data.len();
         let chunks = n / 8;
         let remainder = n % 8;
@@ -350,7 +356,11 @@ pub fn tensor_softmax(a: &Tensor, out: &mut Tensor) {
 pub fn tensor_sum(a: &Tensor) -> f32 {
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
     if crate::ops::has_avx2() {
-        use core::arch::x86_64::*;
+        use core::arch::x86_64::{
+            _mm256_add_ps, _mm256_castps256_ps128, _mm256_extractf128_ps, _mm256_loadu_ps,
+            _mm256_setzero_ps, _mm_add_ps, _mm_add_ss, _mm_cvtss_f32, _mm_movehl_ps,
+            _mm_shuffle_ps,
+        };
         let len = a.data.len();
         let chunks = len / 8;
         // SAFETY: AVX2 availability confirmed at runtime via has_avx2().
@@ -401,7 +411,10 @@ pub fn tensor_max(a: &Tensor) -> f32 {
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
     if crate::ops::has_avx2() {
-        use core::arch::x86_64::*;
+        use core::arch::x86_64::{
+            _mm256_castps256_ps128, _mm256_extractf128_ps, _mm256_loadu_ps, _mm256_max_ps,
+            _mm256_set1_ps, _mm_cvtss_f32, _mm_max_ps, _mm_max_ss, _mm_movehl_ps, _mm_shuffle_ps,
+        };
         let chunks = len / 8;
         // SAFETY: AVX2 availability confirmed at runtime via has_avx2().
         // Each load reads exactly 8 consecutive f32 values within a.data bounds:
@@ -444,7 +457,10 @@ pub fn tensor_min(a: &Tensor) -> f32 {
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
     if crate::ops::has_avx2() {
-        use core::arch::x86_64::*;
+        use core::arch::x86_64::{
+            _mm256_castps256_ps128, _mm256_extractf128_ps, _mm256_loadu_ps, _mm256_min_ps,
+            _mm256_set1_ps, _mm_cvtss_f32, _mm_min_ps, _mm_min_ss, _mm_movehl_ps, _mm_shuffle_ps,
+        };
         let chunks = len / 8;
         // SAFETY: AVX2 availability confirmed at runtime via has_avx2().
         // Each load reads exactly 8 consecutive f32 values within a.data bounds:
@@ -694,7 +710,7 @@ pub fn tensor_layer_norm(
 #[cfg(all(target_arch = "x86_64", feature = "simd"))]
 #[inline]
 fn simd_add_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
-    use core::arch::x86_64::*;
+    use core::arch::x86_64::{_mm256_add_ps, _mm256_loadu_ps, _mm256_storeu_ps};
     let n = a.len();
     let chunks = n / 8;
     // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
@@ -718,7 +734,7 @@ fn simd_add_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
 #[cfg(all(target_arch = "x86_64", feature = "simd"))]
 #[inline]
 fn simd_sub_f32(a: &[f32], b: &[f32], out: &mut [f32]) {
-    use core::arch::x86_64::*;
+    use core::arch::x86_64::{_mm256_loadu_ps, _mm256_storeu_ps, _mm256_sub_ps};
     let n = a.len();
     let chunks = n / 8;
     // SAFETY: AVX2 is required by the "simd" feature gate and the target_arch guard.
