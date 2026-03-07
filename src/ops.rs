@@ -657,8 +657,12 @@ pub mod simd {
     ///
     /// Algorithm:
     /// 1. Broadcast `mask_bits` to all 8 lanes
-    /// 2. AND with bit positions [1,2,4,8,16,32,64,128]
-    /// 3. Compare equal → 0xFFFFFFFF where bit was set
+    /// 2. AND with bit positions \[1,2,4,8,16,32,64,128\]
+    /// 3. Compare equal -> `0xFFFFFFFF` where bit was set
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure AVX2 is available on the current CPU.
     #[inline(always)]
     unsafe fn build_mask_8(bits: u32, offset: usize) -> __m256 {
         // Extract 8 bits and broadcast to all lanes
@@ -678,7 +682,11 @@ pub mod simd {
         _mm256_castsi256_ps(cmp)
     }
 
-    /// Horizontal sum of AVX vector
+    /// Horizontal sum of AVX vector.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure AVX2 is available on the current CPU.
     #[inline(always)]
     unsafe fn hsum_avx(v: __m256) -> f32 {
         let hi = _mm256_extractf128_ps(v, 1);
@@ -699,7 +707,7 @@ pub mod simd {
         output: &mut [f32],
     ) {
         if has_avx2() {
-            unsafe { ternary_matvec_avx2(input, weights, output) }
+            unsafe { ternary_matvec_avx2(input, weights, output) };
         } else {
             super::ternary_matvec_kernel(input, weights, output);
         }
@@ -718,7 +726,7 @@ pub mod simd {
 /// Values: 0 = unknown, 1 = not available, 2 = available.
 ///
 /// This function is `pub(crate)` so that [`tensor`] and other sibling modules
-/// can share the same cached detection without duplicating the AtomicU8.
+/// can share the same cached detection without duplicating the `AtomicU8`.
 #[cfg(all(target_arch = "x86_64", feature = "simd", feature = "std"))]
 #[inline]
 pub(crate) fn has_avx2() -> bool {
