@@ -2,7 +2,7 @@
 name = "alice-ml"
 version = "0.2.0"
 edition = "2021"
-authors = ["Moroya Sakamoto"]
+authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
 description = "1.58bit Ternary Inference Engine - Multiplication is expensive. Addition is all you need."
 license = "AGPL-3.0-only OR Commercial"
 repository = "https://github.com/ext-sakamoro/ALICE-ML"
@@ -23,6 +23,7 @@ neon = []       # Enable hand-tuned NEON kernels (ARM aarch64)
 parallel = ["dep:rayon"]  # Enable Rayon parallel batch processing
 pyo3 = ["dep:pyo3", "dep:numpy", "std"]  # Python bindings
 db = ["dep:alice-db", "std"]  # ALICE-DB training metrics persistence
+safetensors = ["std"]  # Safetensors format parser + Llama-3 ternary inference
 
 [dependencies]
 rayon = { version = "1.10", optional = true }
@@ -34,6 +35,8 @@ alice-db = { path = "../ALICE-DB", optional = true, default-features = false }
 criterion = "0.5"
 rand = "0.8"
 tempfile = "3"
+tokenizers = "0.21"
+serde_json = "1"
 
 [[bench]]
 name = "matmul"
