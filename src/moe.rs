@@ -381,11 +381,11 @@ mod tests {
         let mut selector = ExpertSelector::new(2);
         // u32::MAX回記録してもオーバーフローしない
         selector.last_expert = Some(0);
-        selector.transitions[0 * 2 + 1] = u32::MAX;
+        selector.transitions[1] = u32::MAX;
         selector.record(&[ExpertChoice {
             expert_id: 1,
             weight: 1.0,
         }]);
-        assert_eq!(selector.transitions[0 * 2 + 1], u32::MAX);
+        assert_eq!(selector.transitions[1], u32::MAX);
     }
 }
