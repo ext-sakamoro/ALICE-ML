@@ -110,7 +110,7 @@ impl MoeRouter {
 pub struct ExpertSelector {
     /// エキスパート数
     num_experts: usize,
-    /// 遷移カウント: transitions[prev * num_experts + next] = 出現回数
+    /// 遷移カウント: `transitions[prev * num_experts + next]` = 出現回数
     transitions: Vec<u32>,
     /// 直前に選択されたエキスパート（最初のルーティング前はNone）
     last_expert: Option<usize>,
