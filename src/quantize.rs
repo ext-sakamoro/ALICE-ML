@@ -145,10 +145,85 @@ pub fn quantize_to_ternary(
 
     stats.mae = mae_sum * inv_len;
 
+    let tw = TernaryWeight::from_packed(
+        TernaryWeight::from_ternary(&ternary_values, out_features, in_features)
+            .packed()
+            .to_vec(),
+        out_features,
+        in_features,
+        scale,
+    );
+
+    (tw, stats)
+}
+
+/// Quantize with pre-computed scale and temperature (for QAT checkpoints).
+///
+/// Uses the exact scale γ and temperature from ALICE-Train QAT learning,
+/// ensuring the quantization matches the training-time `FakeQuantize`.
+///
+/// Formula: `q = round(w / γ / temp).clamp(-1, 1)`, reconstruction: `q * γ`
+///
+/// # Panics
+/// Panics if `out_features * in_features` overflows `usize` or does not equal `weights.len()`.
+#[must_use]
+pub fn quantize_to_ternary_qat(
+    weights: &[f32],
+    out_features: usize,
+    in_features: usize,
+    scale: f32,
+    temperature: f32,
+) -> (TernaryWeight, QuantStats) {
+    let total = out_features
+        .checked_mul(in_features)
+        .expect("dimension overflow: out_features * in_features");
+    assert_eq!(weights.len(), total);
+
+    if weights.is_empty() {
+        return (
+            TernaryWeight::from_ternary(&[], 0, 0),
+            QuantStats::default(),
+        );
+    }
+
+    let gamma = scale.max(1e-10);
+    let temp = temperature.max(1e-10);
+    let inv_gamma_temp = 1.0 / (gamma * temp);
+    let inv_len = 1.0 / weights.len() as f32;
+
+    let mut ternary_values = vec![0i8; weights.len()];
+    let mut stats = QuantStats {
+        scale: gamma,
+        original_range: (f32::INFINITY, f32::NEG_INFINITY),
+        ..Default::default()
+    };
+
+    let mut mae_sum = 0.0f32;
+
+    for (i, &w) in weights.iter().enumerate() {
+        stats.original_range.0 = stats.original_range.0.min(w);
+        stats.original_range.1 = stats.original_range.1.max(w);
+
+        // QAT FakeQuantize: round(w / γ / temp) → clamp(-1, 1)
+        let scaled = w * inv_gamma_temp;
+        let quantized = scaled.round().clamp(-1.0, 1.0) as i8;
+
+        ternary_values[i] = quantized;
+
+        match quantized {
+            1 => stats.plus_count += 1,
+            -1 => stats.minus_count += 1,
+            _ => stats.zero_count += 1,
+        }
+
+        let reconstructed = quantized as f32 * gamma;
+        mae_sum += (w - reconstructed).abs();
+    }
+
+    stats.mae = mae_sum * inv_len;
+
     let tw = TernaryWeight::from_ternary(&ternary_values, out_features, in_features);
-    let mut tw = tw;
-    // Set the scale (need to rebuild with scale)
-    tw = TernaryWeight::from_packed(tw.packed().to_vec(), out_features, in_features, scale);
+    let tw = TernaryWeight::from_packed(tw.packed().to_vec(), out_features, in_features, gamma);
 
     (tw, stats)
 }

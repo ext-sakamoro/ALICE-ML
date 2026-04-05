@@ -110,8 +110,8 @@ impl MoeRouter {
 pub struct ExpertSelector {
     /// エキスパート数
     num_experts: usize,
-    /// 遷移カウント: transition[prev][next] = 出現回数
-    transitions: Vec<Vec<u32>>,
+    /// 遷移カウント: transitions[prev * num_experts + next] = 出現回数
+    transitions: Vec<u32>,
     /// 直前に選択されたエキスパート（最初のルーティング前はNone）
     last_expert: Option<usize>,
 }
@@ -120,12 +120,9 @@ impl ExpertSelector {
     /// 新規セレクター作成
     #[must_use]
     pub fn new(num_experts: usize) -> Self {
-        let transitions = (0..num_experts)
-            .map(|_| (0..num_experts).map(|_| 0_u32).collect::<Vec<_>>())
-            .collect();
         Self {
             num_experts,
-            transitions,
+            transitions: vec![0u32; num_experts * num_experts],
             last_expert: None,
         }
     }
@@ -135,8 +132,8 @@ impl ExpertSelector {
         for c in choices {
             if let Some(prev) = self.last_expert {
                 if prev < self.num_experts && c.expert_id < self.num_experts {
-                    self.transitions[prev][c.expert_id] =
-                        self.transitions[prev][c.expert_id].saturating_add(1);
+                    let idx = prev * self.num_experts + c.expert_id;
+                    self.transitions[idx] = self.transitions[idx].saturating_add(1);
                 }
             }
             self.last_expert = Some(c.expert_id);
@@ -156,7 +153,8 @@ impl ExpertSelector {
             return Vec::new();
         }
 
-        let row = &self.transitions[prev];
+        let base = prev * self.num_experts;
+        let row = &self.transitions[base..base + self.num_experts];
         let mut indexed: Vec<(usize, u32)> = row.iter().copied().enumerate().collect();
         indexed.sort_unstable_by(|a, b| b.1.cmp(&a.1));
 
@@ -170,11 +168,7 @@ impl ExpertSelector {
 
     /// 遷移テーブルをリセット
     pub fn reset(&mut self) {
-        for row in &mut self.transitions {
-            for c in row.iter_mut() {
-                *c = 0;
-            }
-        }
+        self.transitions.iter_mut().for_each(|c| *c = 0);
         self.last_expert = None;
     }
 }
@@ -387,11 +381,11 @@ mod tests {
         let mut selector = ExpertSelector::new(2);
         // u32::MAX回記録してもオーバーフローしない
         selector.last_expert = Some(0);
-        selector.transitions[0][1] = u32::MAX;
+        selector.transitions[0 * 2 + 1] = u32::MAX;
         selector.record(&[ExpertChoice {
             expert_id: 1,
             weight: 1.0,
         }]);
-        assert_eq!(selector.transitions[0][1], u32::MAX);
+        assert_eq!(selector.transitions[0 * 2 + 1], u32::MAX);
     }
 }

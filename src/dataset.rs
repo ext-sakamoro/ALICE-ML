@@ -128,19 +128,23 @@ impl Batch<'_> {
     /// 特徴量をフラットな Vec に展開 (row-major)。
     #[must_use]
     pub fn features_flat(&self) -> Vec<f32> {
-        self.samples
-            .iter()
-            .flat_map(|s| s.features.iter().copied())
-            .collect()
+        let total = self.samples.iter().map(|s| s.features.len()).sum();
+        let mut out = Vec::with_capacity(total);
+        for s in self.samples {
+            out.extend_from_slice(&s.features);
+        }
+        out
     }
 
     /// ターゲットをフラットな Vec に展開 (row-major)。
     #[must_use]
     pub fn targets_flat(&self) -> Vec<f32> {
-        self.samples
-            .iter()
-            .flat_map(|s| s.target.iter().copied())
-            .collect()
+        let total = self.samples.iter().map(|s| s.target.len()).sum();
+        let mut out = Vec::with_capacity(total);
+        for s in self.samples {
+            out.extend_from_slice(&s.target);
+        }
+        out
     }
 }
 
