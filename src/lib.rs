@@ -130,6 +130,14 @@ pub mod streaming;
 #[cfg(feature = "db")]
 pub mod db_bridge;
 
+/// Safetensors format parser (BF16/FP16/FP32).
+#[cfg(feature = "safetensors")]
+pub mod safetensors;
+
+/// Llama-3 inference with 1.58-bit ternary weights.
+#[cfg(feature = "safetensors")]
+pub mod llama3_ternary;
+
 #[cfg(feature = "ffi")]
 pub mod ffi;
 
@@ -183,7 +191,7 @@ pub use ops::ternary_matvec_simd_dispatch;
 // Quantization
 pub use quantize::{
     compute_quantization_error, dequantize_from_ternary, quantize_to_ternary,
-    quantize_to_ternary_sparse, QuantStats, QuantizationError,
+    quantize_to_ternary_qat, quantize_to_ternary_sparse, QuantStats, QuantizationError,
 };
 
 // Cumulative quantization error analysis
