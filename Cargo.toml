@@ -42,6 +42,13 @@ serde_json = "1"
 name = "matmul"
 harness = false
 
+# The `qwen_qat_test` example imports `alice_ml::llama3_ternary`, which lives
+# behind the `safetensors` feature (see `src/lib.rs:138`). Gate the example so
+# `cargo check --all-targets` (default features) skips it cleanly.
+[[example]]
+name = "qwen_qat_test"
+required-features = ["safetensors"]
+
 [profile.release]
 opt-level = 3
 lto = "fat"
