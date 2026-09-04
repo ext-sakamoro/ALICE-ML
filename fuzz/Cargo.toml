@@ -13,16 +13,29 @@ arbitrary = { version = "1", features = ["derive"] }
 
 [dependencies.alice-ml]
 path = ".."
-features = ["std"]
 
+# cargo-machete false-positive 予防 (canonical [[reference_alice_ci_canonical_template]] 罠 #3)
+# libfuzzer-sys / arbitrary は fuzz_target! macro 内でのみ参照されるため machete が誤検知
+# alice-ml lib は現状 empty (public API 未 export) だが CI template symmetry のため path dep 保持
+[package.metadata.cargo-machete]
+ignored = ["libfuzzer-sys", "arbitrary", "alice-ml"]
+
+# 攻撃者制御 bytes を tensor deserialize 経路に流し込み panic 無しで完走する
 [[bin]]
-name = "fuzz_matvec"
-path = "fuzz_targets/fuzz_matvec.rs"
+name = "fuzz_tensor_deserialize"
+path = "fuzz_targets/fuzz_tensor_deserialize.rs"
 doc = false
 
+# 攻撃者制御 model input で forward pass が NaN propagation なく panic 無しで完走する
 [[bin]]
-name = "fuzz_quantize"
-path = "fuzz_targets/fuzz_quantize.rs"
+name = "fuzz_model_forward"
+path = "fuzz_targets/fuzz_model_forward.rs"
+doc = false
+
+# 攻撃者制御 weights file (safetensors / bincode 等) の parse が panic 無しで完走する
+[[bin]]
+name = "fuzz_weights_load"
+path = "fuzz_targets/fuzz_weights_load.rs"
 doc = false
 
 [workspace]
