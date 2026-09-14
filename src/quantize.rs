@@ -57,13 +57,13 @@ impl QuantStats {
 
         let mut entropy = 0.0f32;
         if p_plus > 0.0 {
-            entropy -= p_plus * p_plus.log2();
+            entropy = p_plus.mul_add(-p_plus.log2(), entropy);
         }
         if p_minus > 0.0 {
-            entropy -= p_minus * p_minus.log2();
+            entropy = p_minus.mul_add(-p_minus.log2(), entropy);
         }
         if p_zero > 0.0 {
-            entropy -= p_zero * p_zero.log2();
+            entropy = p_zero.mul_add(-p_zero.log2(), entropy);
         }
 
         entropy
@@ -346,7 +346,7 @@ pub fn compute_quantization_error(
     for (o, d) in original.iter().zip(dequantized.iter()) {
         let err = (o - d).abs();
         mae += err;
-        mse += err * err;
+        mse = err.mul_add(err, mse);
         max_error = max_error.max(err);
     }
 

@@ -91,7 +91,7 @@ impl BitLinear {
             // Compute RMS of input inline (no allocation)
             let mut sum_sq: f32 = 0.0;
             for &x in input {
-                sum_sq += x * x;
+                sum_sq = x.mul_add(x, sum_sq);
             }
             let rms = (sum_sq / input.len() as f32 + self.norm_eps).sqrt();
             let inv_rms = 1.0 / rms;

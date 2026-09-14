@@ -17,16 +17,19 @@ jobs:
       - uses: actions/checkout@v5
       - name: Create dependency stubs
         run: |
+          # dir:crate:version — version は Cargo.toml 要件 (alice-db ^0.2.0-beta.1) を満たすこと
           for crate_info in \
-            "ALICE-DB:alice-db"; do
+            "ALICE-DB:alice-db:0.2.0-beta.1"; do
             dir=$(echo "$crate_info" | cut -d: -f1)
             pkg=$(echo "$crate_info" | cut -d: -f2)
+            ver=$(echo "$crate_info" | cut -d: -f3)
             mkdir -p "../$dir/src"
             cat > "../$dir/Cargo.toml" << TOML
           [package]
           name = "$pkg"
-          version = "0.1.0"
+          version = "$ver"
           edition = "2021"
+          license = "MIT OR Apache-2.0"
           [features]
           default = []
           std = []
@@ -43,16 +46,19 @@ jobs:
       - uses: actions/checkout@v5
       - name: Create dependency stubs
         run: |
+          # dir:crate:version — version は Cargo.toml 要件 (alice-db ^0.2.0-beta.1) を満たすこと
           for crate_info in \
-            "ALICE-DB:alice-db"; do
+            "ALICE-DB:alice-db:0.2.0-beta.1"; do
             dir=$(echo "$crate_info" | cut -d: -f1)
             pkg=$(echo "$crate_info" | cut -d: -f2)
+            ver=$(echo "$crate_info" | cut -d: -f3)
             mkdir -p "../$dir/src"
             cat > "../$dir/Cargo.toml" << TOML
           [package]
           name = "$pkg"
-          version = "0.1.0"
+          version = "$ver"
           edition = "2021"
+          license = "MIT OR Apache-2.0"
           [features]
           default = []
           std = []
@@ -79,16 +85,19 @@ jobs:
       - uses: actions/checkout@v5
       - name: Create dependency stubs
         run: |
+          # dir:crate:version — version は Cargo.toml 要件 (alice-db ^0.2.0-beta.1) を満たすこと
           for crate_info in \
-            "ALICE-DB:alice-db"; do
+            "ALICE-DB:alice-db:0.2.0-beta.1"; do
             dir=$(echo "$crate_info" | cut -d: -f1)
             pkg=$(echo "$crate_info" | cut -d: -f2)
+            ver=$(echo "$crate_info" | cut -d: -f3)
             mkdir -p "../$dir/src"
             cat > "../$dir/Cargo.toml" << TOML
           [package]
           name = "$pkg"
-          version = "0.1.0"
+          version = "$ver"
           edition = "2021"
+          license = "MIT OR Apache-2.0"
           [features]
           default = []
           std = []

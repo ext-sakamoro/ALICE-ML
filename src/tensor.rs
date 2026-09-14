@@ -114,13 +114,13 @@ impl<'a> Tensor<'a> {
     /// Get element at flat index
     #[inline]
     #[must_use]
-    pub fn get_flat(&self, idx: usize) -> f32 {
+    pub const fn get_flat(&self, idx: usize) -> f32 {
         self.data[idx]
     }
 
     /// Set element at flat index
     #[inline]
-    pub fn set_flat(&mut self, idx: usize, val: f32) {
+    pub const fn set_flat(&mut self, idx: usize, val: f32) {
         self.data[idx] = val;
     }
 
@@ -644,7 +644,7 @@ pub fn tensor_rms_norm(a: &Tensor, weight: Option<&Tensor>, eps: f32, out: &mut 
     // Compute RMS
     let mut sum_sq: f32 = 0.0;
     for i in 0..len {
-        sum_sq += a.data[i] * a.data[i];
+        sum_sq = a.data[i].mul_add(a.data[i], sum_sq);
     }
     let rms = (sum_sq / len as f32 + eps).sqrt();
     let inv_rms = 1.0 / rms;
@@ -689,7 +689,7 @@ pub fn tensor_layer_norm(
     let mut var: f32 = 0.0;
     for i in 0..len {
         let d = a.data[i] - mean;
-        var += d * d;
+        var = d.mul_add(d, var);
     }
     var /= len as f32;
     let inv_std = 1.0 / (var + eps).sqrt();

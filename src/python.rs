@@ -254,7 +254,7 @@ impl PyTernaryWeightKernel {
 // ============================================================================
 
 /// Quantization statistics after FP32 → ternary conversion.
-#[pyclass(name = "QuantStats")]
+#[pyclass(name = "QuantStats", from_py_object)]
 #[derive(Clone)]
 pub struct PyQuantStats {
     inner: QuantStats,

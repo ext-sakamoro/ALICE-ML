@@ -43,7 +43,7 @@ pub fn mse_loss(predictions: &[f32], targets: &[f32], grad_out: &mut [f32]) -> L
     let mut sum = 0.0_f32;
     for i in 0..n {
         let diff = predictions[i] - targets[i];
-        sum += diff * diff;
+        sum = diff.mul_add(diff, sum);
         grad_out[i] = 2.0 * diff * rcp_n;
     }
     LossResult { value: sum * rcp_n }
@@ -75,7 +75,7 @@ pub fn cross_entropy_loss(logits: &[f32], targets: &[f32], grad_out: &mut [f32])
     let mut loss = 0.0_f32;
     for i in 0..n {
         let softmax_i = (logits[i] - log_sum).exp();
-        loss -= targets[i] * (softmax_i + 1e-8).ln();
+        loss = targets[i].mul_add(-(softmax_i + 1e-8).ln(), loss);
         grad_out[i] = softmax_i - targets[i];
     }
 
@@ -163,7 +163,7 @@ impl SgdState {
 
         for i in 0..params.len() {
             self.velocity[i] = mom.mul_add(self.velocity[i], grads[i]);
-            params[i] -= lr * self.velocity[i];
+            params[i] = lr.mul_add(-self.velocity[i], params[i]);
         }
     }
 }

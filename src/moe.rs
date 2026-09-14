@@ -156,7 +156,7 @@ impl ExpertSelector {
         let base = prev * self.num_experts;
         let row = &self.transitions[base..base + self.num_experts];
         let mut indexed: Vec<(usize, u32)> = row.iter().copied().enumerate().collect();
-        indexed.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+        indexed.sort_unstable_by_key(|x| core::cmp::Reverse(x.1));
 
         indexed
             .iter()
