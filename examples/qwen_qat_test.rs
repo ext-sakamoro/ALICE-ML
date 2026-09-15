@@ -1,7 +1,7 @@
 //! ALICE QAT ECU テスト — .atml から直接ロードして推論
 //!
 //! 正しいフロー: QATで学習済みの三値重みを .atml から読み込み、
-//! ALICE-ML の ternary_matvec で推論。量子化ステップは不要。
+//! ALICE-ML の `ternary_matvec` で推論。量子化ステップは不要。
 //!
 //! ```bash
 //! cargo run --example qwen_qat_test --features safetensors --release -- \
@@ -10,9 +10,11 @@
 //!   --tokenizer ~/Project-ALICE/models/qwen2.5-1.5b-qat-merged/tokenizer.json
 //! ```
 
+// example: QAT 検証 report、統計表示 (usize → f64) を 1 本の main で順に見せる
+#![allow(clippy::cast_precision_loss, clippy::too_many_lines)]
+
 use alice_ml::llama3_ternary::{Llama3TernaryConfig, Llama3TernaryModel};
 use alice_ml::model_io::ModelArchive;
-use alice_ml::ops::TernaryWeight;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -126,8 +128,7 @@ fn main() {
                 .iter()
                 .enumerate()
                 .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-                .map(|(id, _)| id as u32)
-                .unwrap_or(0);
+                .map_or(0, |(id, _)| u32::try_from(id).unwrap_or(u32::MAX)); // vocab index < 2^32
 
             if next_id == 151_643 || next_id == 151_645 || next_id == 151_644 {
                 break;

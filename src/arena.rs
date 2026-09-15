@@ -5,7 +5,7 @@
 //! Author: Moroya Sakamoto
 
 #[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 
 /// Simple bump allocator for inference buffers
 ///

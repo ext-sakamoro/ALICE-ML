@@ -1,5 +1,15 @@
 name: CI
 
+# canonical CI template: [[reference_alice_ci_canonical_template]] 手順 4.5 / 4.6
+# 2026-09-15 強化 (罠 #25-27 / #29 遡及):
+# - clippy を `--all-targets` + full native feature set で `-D warnings` (feature-gated module
+#   ffi / safetensors / llama3_ternary が従来は未 lint、38 件が silent だった)
+# - no_std job: `crate-type = ["rlib", "staticlib", "cdylib"]` のため `cargo check --no-default-features`
+#   は cdylib の panic_handler / allocator 要求で落ちる → `cargo rustc --crate-type rlib` で検証、
+#   bare-metal target (thumbv7em) で本物の no_std を証明 (2026-09-15 まで no_std build は一度も通っておらず
+#   CI も見ていなかった = claim が偽だった)
+# - feature-powerset: std 固定で depth 2 (pyo3 = Python toolchain / db = sibling 実体 / neon = aarch64 のみ、除外)
+
 on:
   push:
     branches: [main]
@@ -9,6 +19,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-Dwarnings"
+  # full native feature set (pyo3 / db / neon を除く、clippy / test で共用)
+  NATIVE_FEATURES: "ffi,simd,parallel,safetensors"
 
 jobs:
   test:
@@ -37,8 +49,36 @@ jobs:
             echo "" > "../$dir/src/lib.rs"
           done
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --lib --tests
-      - run: cargo test --lib --tests --features simd
+      - uses: Swatinem/rust-cache@v2
+      - name: Test (default)
+        run: cargo test --lib --tests
+      - name: Test (simd)
+        run: cargo test --lib --tests --features simd
+      - name: Test (full native feature set)
+        run: cargo test --lib --tests --features "$NATIVE_FEATURES"
+
+  no_std:
+    name: no_std (rlib、host + bare-metal thumbv7em)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabihf
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Build (no_std, host)
+        run: cargo rustc --lib --no-default-features --crate-type rlib
+      - name: Build (no_std + simd, host)
+        run: cargo rustc --lib --no-default-features --features simd --crate-type rlib
+      - name: Build (no_std, bare-metal thumbv7em-none-eabihf)
+        run: cargo rustc --lib --no-default-features --crate-type rlib --target thumbv7em-none-eabihf
+      # cargo clippy は crate-type を上書きできないので clippy-driver を wrapper で差す
+      - name: Clippy (no_std, pedantic + nursery)
+        run: >-
+          RUSTC_WORKSPACE_WRAPPER="$(rustup which clippy-driver)"
+          cargo rustc --lib --no-default-features --crate-type rlib --
+          -W clippy::pedantic -W clippy::nursery -D warnings
 
   clippy:
     runs-on: ubuntu-latest
@@ -68,7 +108,24 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - run: cargo clippy --lib --tests --features simd -- -W clippy::pedantic -W clippy::nursery -D warnings
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy (default features, all targets)
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Clippy (full native feature set, all targets, pedantic + nursery)
+        run: cargo clippy --features "$NATIVE_FEATURES" --all-targets -- -W clippy::pedantic -W clippy::nursery -D warnings
+
+  feature-powerset:
+    name: Feature powerset (cargo-hack, std 固定, depth 2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      # std 固定: std なしの組合せは cdylib link 要求で落ちるため no_std job 側で rlib として検証
+      - name: Powerset (std + {ffi, simd, parallel, safetensors} depth 2)
+        run: cargo hack check --lib --feature-powerset --depth 2 --exclude-features pyo3,db,neon --features std
 
   fmt:
     runs-on: ubuntu-latest
@@ -105,7 +162,9 @@ jobs:
             echo "" > "../$dir/src/lib.rs"
           done
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo doc --no-deps
+      - uses: Swatinem/rust-cache@v2
+      - name: Doc (full native feature set)
+        run: cargo doc --no-deps --features "$NATIVE_FEATURES"
         env:
           RUSTDOCFLAGS: "-Dwarnings"
 

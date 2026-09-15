@@ -480,7 +480,7 @@ pub unsafe extern "C" fn am_ml_tensor_rms_norm(
     let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
     let mut sum_sq: f32 = 0.0;
     for &x in sa {
-        sum_sq += x * x;
+        sum_sq = x.mul_add(x, sum_sq);
     }
     let inv_rms = 1.0 / (sum_sq / len as f32 + epsilon).sqrt();
     for (o, &x) in so.iter_mut().zip(sa.iter()) {
@@ -505,7 +505,7 @@ pub unsafe extern "C" fn am_ml_tensor_layer_norm(
     let mut var: f32 = 0.0;
     for &x in sa {
         let d = x - mean;
-        var += d * d;
+        var = d.mul_add(d, var);
     }
     let inv_std = 1.0 / (var / len as f32 + epsilon).sqrt();
     for (o, &x) in so.iter_mut().zip(sa.iter()) {
@@ -1220,7 +1220,7 @@ mod tests {
         assert!(unsafe { am_ml_micro_model_param_count(model) } > 0);
         assert_eq!(unsafe { am_ml_micro_model_depth(model) }, 2);
 
-        let input = vec![1.0f32; 32];
+        let input = [1.0f32; 32];
         let mut output = vec![0.0f32; 32];
         unsafe {
             am_ml_micro_model_forward(model, input.as_ptr(), 32, output.as_mut_ptr(), 32);
@@ -1236,7 +1236,7 @@ mod tests {
         let model =
             unsafe { am_ml_micro_model_build_random(16, 16, core::ptr::null(), 0, 512 * 1024, 1) };
 
-        let input = vec![1.0f32; 16];
+        let input = [1.0f32; 16];
         let mut logits = vec![0.0f32; 16 * 3];
         let steps = unsafe {
             am_ml_micro_model_predict_tokens(model, input.as_ptr(), 16, logits.as_mut_ptr(), 48, 3)
@@ -1261,7 +1261,7 @@ mod tests {
         assert!(unsafe { am_ml_cache_decoder_draft_memory(decoder) } > 0);
         assert!(unsafe { am_ml_cache_decoder_verify_memory(decoder) } > 0);
 
-        let input = vec![1.0f32; 16];
+        let input = [1.0f32; 16];
         let mut draft_buf = vec![0.0f32; 16 * 3];
         let mut verify_buf = vec![0.0f32; 16 * 3];
         let accepted = unsafe {

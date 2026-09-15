@@ -4,6 +4,8 @@
 //! 小規模モデルの fine-tuning が可能。
 
 #[cfg(not(feature = "std"))]
+use crate::math::FloatExt;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
 /// Loss 関数の種別。

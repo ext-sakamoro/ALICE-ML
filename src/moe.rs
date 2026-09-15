@@ -24,9 +24,9 @@
 //! エキスパートを予測。ALICE-Cache の `batch_put` でプリフェッチに利用可能。
 
 #[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-#[cfg(feature = "std")]
-use std::vec::Vec;
+use crate::math::FloatExt;
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
 
 use crate::ops::{ternary_matvec, TernaryWeight};
 

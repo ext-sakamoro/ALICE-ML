@@ -89,7 +89,7 @@ fn bench_fp32_matvec_baseline(c: &mut Criterion) {
                 for i in 0..*size {
                     let mut sum = 0.0f32;
                     for j in 0..*size {
-                        sum += weights[i * size + j] * input[j];
+                        sum = weights[i * size + j].mul_add(input[j], sum);
                     }
                     output[i] = sum;
                 }

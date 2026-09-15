@@ -52,7 +52,7 @@
 //! Author: Moroya Sakamoto
 
 #[cfg(not(feature = "std"))]
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 
 use crate::model_io::{ModelArchive, SerializedLayer};
 use crate::ops::TernaryWeight;

@@ -2,6 +2,17 @@
 
 All notable changes to ALICE-ML will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **`no_std` build が一度も通っていなかった** (`--no-default-features` で 65 error: `mul_add` / `sqrt` / `exp` / `vec!` 等) — `src/math.rs` の `FloatExt` trait (`libm` 委譲、`std` 時は不使用) と `alloc::vec` import で修正、`parallel` feature は `std` を要求するよう明示 host rlib + bare-metal `thumbv7em-none-eabihf` で build を確認 (`crate-type` に cdylib / staticlib を含むため `cargo check` では panic_handler / allocator 要求で落ちる、検証は `cargo rustc --crate-type rlib`)
+- feature-gated module (`ffi` / `safetensors` / `llama3_ternary`) の clippy pedantic / nursery 38 件と rustdoc 未解決 link 2 件 (CI が `--features simd` のみで未 lint だった)
+- `elyza_ternary` / `qwen_qat_test` example に `required-features = ["safetensors"]` (default build で unresolved import)
+
+### Changed
+- `libm = "0.2"` を依存に追加 (`no_std` build のみ使用) `no_std` 時の `exp` / `sqrt` 等は platform libm と最終 ulp で異なりうる (ternary matvec の bit-exact 性は不変、`src/math.rs` doc 参照)
+- CI: clippy を `--all-targets` + full native feature set (`ffi,simd,parallel,safetensors`) で `-D warnings`、`no_std` job (host + thumbv7em + clippy-driver wrapper)、`feature-powerset` job (cargo-hack、std 固定 depth 2)、test / doc も full native feature set を追加、rust-cache
+
 ## [0.2.0] - 2026-03-06
 
 ### Added

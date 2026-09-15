@@ -22,7 +22,7 @@ pub struct Llama3TernaryConfig {
     pub vocab_size: usize,
     /// Hidden dimension
     pub hidden_dim: usize,
-    /// FFN intermediate dimension (SwiGLU)
+    /// FFN intermediate dimension (`SwiGLU`)
     pub intermediate_dim: usize,
     /// Number of attention heads
     pub num_heads: usize,
@@ -34,7 +34,7 @@ pub struct Llama3TernaryConfig {
     pub max_seq_len: usize,
     /// Head dimension
     pub head_dim: usize,
-    /// RoPE base frequency
+    /// `RoPE` base frequency
     pub rope_theta: f32,
     /// RMS norm epsilon
     pub norm_eps: f32,
@@ -43,7 +43,7 @@ pub struct Llama3TernaryConfig {
 impl Llama3TernaryConfig {
     /// Default config for Llama-3 8B.
     #[must_use]
-    pub fn llama3_8b() -> Self {
+    pub const fn llama3_8b() -> Self {
         Self {
             vocab_size: 128_256,
             hidden_dim: 4096,
@@ -60,7 +60,7 @@ impl Llama3TernaryConfig {
 
     /// Config for Qwen2.5-1.5B-Instruct.
     #[must_use]
-    pub fn qwen2_5_1_5b() -> Self {
+    pub const fn qwen2_5_1_5b() -> Self {
         Self {
             vocab_size: 151_936,
             hidden_dim: 1536,
@@ -130,7 +130,7 @@ fn rms_norm(x: &[f32], weight: &[f32], eps: f32, out: &mut [f32]) {
     let n = x.len();
     let mut ss = 0.0f32;
     for &v in x {
-        ss += v * v;
+        ss = v.mul_add(v, ss);
     }
     let inv_rms = 1.0 / (ss / n as f32 + eps).sqrt();
     for i in 0..n {
@@ -145,8 +145,8 @@ fn apply_rope(vec: &mut [f32], position: usize, head_dim: usize, theta: f32) {
         let (sin_val, cos_val) = angle.sin_cos();
         let x0 = vec[i];
         let x1 = vec[i + 1];
-        vec[i] = x0 * cos_val - x1 * sin_val;
-        vec[i + 1] = x0 * sin_val + x1 * cos_val;
+        vec[i] = x1.mul_add(-sin_val, x0 * cos_val);
+        vec[i + 1] = x1.mul_add(cos_val, x0 * sin_val);
     }
 }
 
@@ -203,6 +203,7 @@ impl Llama3TernaryModel {
     ///
     /// Reads BF16/FP16 weights, quantizes each to ternary {-1, 0, +1},
     /// and stores using 2-bit packing (4 weights per byte).
+    #[must_use]
     pub fn from_safetensors(sf: &SafetensorsFile<'_>, config: Llama3TernaryConfig) -> Option<Self> {
         let mut report = QuantizationReport::default();
 
@@ -312,6 +313,7 @@ impl Llama3TernaryModel {
     /// E.g., `"0.q_proj"` → `(0.033, 0.98)`.
     /// Weights not in the map fall back to auto-computed γ.
     #[cfg(feature = "safetensors")]
+    #[must_use]
     pub fn from_safetensors_with_scales(
         sf: &SafetensorsFile<'_>,
         config: Llama3TernaryConfig,
@@ -434,7 +436,11 @@ impl Llama3TernaryModel {
 
     /// Build model from pre-quantized parts (ATML + FP32).
     ///
-    /// `layers_data`: Vec of (attn_norm, ffn_norm, [q,k,v,o,gate,up,down]_proj)
+    /// `layers_data`: Vec of `(attn_norm, ffn_norm, [q, k, v, o, gate, up, down]_proj)`
+    ///
+    /// # Panics
+    ///
+    /// Panics if any layer has fewer than 7 projections (q, k, v, o, gate, up, down).
     #[must_use]
     pub fn from_parts(
         config: Llama3TernaryConfig,
@@ -559,7 +565,7 @@ impl Llama3TernaryModel {
                     let k_start = kv_h * c.head_dim;
                     let mut score = 0.0f32;
                     for d in 0..c.head_dim {
-                        score += q_head[d] * k_cached[k_start + d];
+                        score = q_head[d].mul_add(k_cached[k_start + d], score);
                     }
                     scores.push(score / (c.head_dim as f32).sqrt());
                 }
@@ -577,11 +583,11 @@ impl Llama3TernaryModel {
                     }
                 }
 
-                for t in 0..seq_len {
-                    let v_cached = &self.kv_cache.values[layer_idx][t];
+                for (score, v_cached) in scores.iter().zip(&self.kv_cache.values[layer_idx]) {
                     let v_start = kv_h * c.head_dim;
                     for d in 0..c.head_dim {
-                        attn_out[q_start + d] += scores[t] * v_cached[v_start + d];
+                        attn_out[q_start + d] =
+                            score.mul_add(v_cached[v_start + d], attn_out[q_start + d]);
                     }
                 }
             }
@@ -619,6 +625,7 @@ impl Llama3TernaryModel {
     }
 
     /// Save quantized model in ATML format for fast reloading.
+    #[must_use]
     pub fn save_atml(&self) -> Vec<u8> {
         let mut archive = ModelArchive::new();
 

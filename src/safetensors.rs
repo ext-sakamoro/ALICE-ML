@@ -15,14 +15,14 @@ use alloc::{collections::BTreeMap as HashMap, string::String, vec, vec::Vec};
 /// BF16 is simply the upper 16 bits of an f32.
 #[inline]
 #[must_use]
-pub fn bf16_to_f32(b: u16) -> f32 {
+pub const fn bf16_to_f32(b: u16) -> f32 {
     f32::from_bits((b as u32) << 16)
 }
 
 /// Convert IEEE 754 half-precision (FP16) to f32.
 #[inline]
 #[must_use]
-pub fn fp16_to_f32(h: u16) -> f32 {
+pub const fn fp16_to_f32(h: u16) -> f32 {
     let sign = ((h >> 15) & 1) as u32;
     let exponent = ((h >> 10) & 0x1f) as u32;
     let mantissa = (h & 0x3ff) as u32;
@@ -80,7 +80,7 @@ impl DType {
 
     /// Bytes per element.
     #[must_use]
-    pub fn element_size(&self) -> usize {
+    pub const fn element_size(&self) -> usize {
         match self {
             Self::F32 => 4,
             Self::F16 | Self::BF16 => 2,
@@ -114,7 +114,7 @@ impl TensorDesc {
 
     /// Data size in bytes.
     #[must_use]
-    pub fn data_size(&self) -> usize {
+    pub const fn data_size(&self) -> usize {
         self.data_end - self.data_start
     }
 }
@@ -127,11 +127,11 @@ struct JsonParser<'a> {
 }
 
 impl<'a> JsonParser<'a> {
-    fn new(data: &'a [u8]) -> Self {
+    const fn new(data: &'a [u8]) -> Self {
         Self { data, pos: 0 }
     }
 
-    fn skip_whitespace(&mut self) {
+    const fn skip_whitespace(&mut self) {
         while self.pos < self.data.len()
             && matches!(self.data[self.pos], b' ' | b'\t' | b'\n' | b'\r')
         {
@@ -246,7 +246,7 @@ impl<'a> JsonParser<'a> {
         }
     }
 
-    /// Parse tensor descriptor object: {"dtype":"BF16","shape":[4096,4096],"data_offsets":[0,33554432]}
+    /// Parse tensor descriptor object: {"dtype":"BF16","shape":[4096,4096],"`data_offsets"`:[0,33554432]}
     fn parse_tensor_desc(&mut self) -> Option<TensorDesc> {
         if !self.consume(b'{') {
             return None;
@@ -296,7 +296,7 @@ impl<'a> JsonParser<'a> {
         })
     }
 
-    /// Parse the top-level object: {"__metadata__":{...}, "tensor_name":{...}, ...}
+    /// Parse the top-level object: {"__metadata__":{...}, "`tensor_name"`:{...}, ...}
     fn parse_header(&mut self) -> Option<HashMap<String, TensorDesc>> {
         if !self.consume(b'{') {
             return None;
@@ -342,7 +342,8 @@ pub struct SafetensorsFile<'a> {
 impl<'a> SafetensorsFile<'a> {
     /// Parse a safetensors file from a byte slice.
     ///
-    /// Format: [header_size: u64 LE][header: JSON][tensor_data...]
+    /// Format: `[header_size: u64 LE][header: JSON][tensor_data...]`
+    #[must_use]
     pub fn parse(bytes: &'a [u8]) -> Option<Self> {
         if bytes.len() < 8 {
             return None;
@@ -366,11 +367,16 @@ impl<'a> SafetensorsFile<'a> {
     }
 
     /// List all tensor names.
+    #[must_use]
     pub fn tensor_names(&self) -> Vec<&str> {
-        self.tensors.keys().map(|k| k.as_str()).collect()
+        self.tensors
+            .keys()
+            .map(std::string::String::as_str)
+            .collect()
     }
 
     /// Get raw bytes for a tensor.
+    #[must_use]
     pub fn tensor_bytes(&self, name: &str) -> Option<&'a [u8]> {
         let desc = self.tensors.get(name)?;
         if desc.data_end > self.data.len() {
@@ -380,6 +386,7 @@ impl<'a> SafetensorsFile<'a> {
     }
 
     /// Read a tensor as f32, converting from BF16/FP16 if needed.
+    #[must_use]
     pub fn tensor_to_f32(&self, name: &str) -> Option<Vec<f32>> {
         let desc = self.tensors.get(name)?;
         let bytes = self.tensor_bytes(name)?;
@@ -424,6 +431,7 @@ impl<'a> SafetensorsFile<'a> {
     }
 
     /// Get tensor descriptor.
+    #[must_use]
     pub fn tensor_desc(&self, name: &str) -> Option<&TensorDesc> {
         self.tensors.get(name)
     }
@@ -572,7 +580,7 @@ mod tests {
         let bytes = make_safetensors_bytes(header, &data);
         let sf = SafetensorsFile::parse(&bytes).unwrap();
         let mut names: Vec<&str> = sf.tensor_names();
-        names.sort();
+        names.sort_unstable();
         assert_eq!(names, vec!["alpha", "beta"]);
     }
 

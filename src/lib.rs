@@ -109,6 +109,8 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+pub(crate) mod math;
+
 pub mod arena;
 pub mod dataset;
 pub mod error_analysis;

@@ -4,7 +4,11 @@
 //!
 //! Author: Moroya Sakamoto
 
+#[cfg(not(feature = "std"))]
+use crate::math::FloatExt;
 use crate::ops::{ternary_matvec_kernel, TernaryWeightKernel};
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 
 /// A `BitLinear` layer: ternary weights + optional bias + optional pre-norm.
 ///

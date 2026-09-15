@@ -35,7 +35,7 @@
 //! Author: Moroya Sakamoto
 
 #[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 
 use crate::layer::BitLinear;
 use crate::ops::TernaryWeightKernel;

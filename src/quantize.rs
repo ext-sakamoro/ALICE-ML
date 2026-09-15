@@ -6,6 +6,8 @@
 //! Author: Moroya Sakamoto
 
 #[cfg(not(feature = "std"))]
+use crate::math::FloatExt;
+#[cfg(not(feature = "std"))]
 use alloc::{vec, vec::Vec};
 
 use crate::ops::TernaryWeight;

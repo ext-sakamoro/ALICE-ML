@@ -1,17 +1,23 @@
 //! ELYZA-JP-8B Ternary (1.58-bit) inference example.
 //!
 //! Two modes:
-//! 1. Quantize from safetensors → ATML (one-time):
-//!    cargo run --example elyza_ternary --features safetensors,neon -- \
-//!      --quantize --input models/elyza-8b/ --output models/elyza-8b-ternary.atml
 //!
-//! 2. Run inference from ATML:
-//!    cargo run --example elyza_ternary --features safetensors,neon -- \
-//!      --model models/elyza-8b-ternary.atml \
-//!      --prompt "日本の首都はどこですか？"
+//! ```text
+//! # 1. Quantize from safetensors → ATML (one-time):
+//! cargo run --example elyza_ternary --features safetensors,neon -- \
+//!   --quantize --input models/elyza-8b/ --output models/elyza-8b-ternary.atml
 //!
-//! Download model:
-//!   huggingface-cli download elyza/Llama-3-ELYZA-JP-8B --local-dir models/elyza-8b/
+//! # 2. Run inference from ATML:
+//! cargo run --example elyza_ternary --features safetensors,neon -- \
+//!   --model models/elyza-8b-ternary.atml \
+//!   --prompt "日本の首都はどこですか？"
+//!
+//! # Download model:
+//! huggingface-cli download elyza/Llama-3-ELYZA-JP-8B --local-dir models/elyza-8b/
+//! ```
+
+// example: メモリ / file size 表示 (usize → f64) の report 用計算
+#![allow(clippy::cast_precision_loss)]
 
 #[cfg(feature = "safetensors")]
 fn main() {
