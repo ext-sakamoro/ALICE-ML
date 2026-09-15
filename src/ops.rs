@@ -743,14 +743,17 @@ pub(crate) fn has_avx2() -> bool {
     }
 }
 
-/// Fallback when `std` is not available: always probe via `is_x86_feature_detected!`.
+/// `no_std` fallback: runtime CPUID probing (`is_x86_feature_detected!`) is
+/// `std`-only, so AVX2 availability is decided at compile time from
+/// `target_feature` (`RUSTFLAGS="-C target-feature=+avx2"` or
+/// `-C target-cpu=native`); otherwise the scalar kernel is used.
 ///
-/// In `no_std` environments this macro resolves to an `__cpuidex` call;
-/// caching requires `std::sync::atomic` which is not available there.
+/// (2026-09-15 まで `is_x86_feature_detected!` を呼んでいて `x86_64` の `no_std` +
+/// simd は compile 不能だった、aarch64 host では cfg で消えるため未検出)
 #[cfg(all(target_arch = "x86_64", feature = "simd", not(feature = "std")))]
 #[inline]
-pub(crate) fn has_avx2() -> bool {
-    is_x86_feature_detected!("avx2")
+pub(crate) const fn has_avx2() -> bool {
+    cfg!(target_feature = "avx2")
 }
 
 // ============================================================================
