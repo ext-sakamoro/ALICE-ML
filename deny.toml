@@ -5,7 +5,7 @@
 # ALICE-SDF v1.7.7 (commit 52d26f9) の deny.toml を base に ALICE-ML 用に調整
 #
 # ALICE-ML 自体は MIT OR Apache-2.0 (permissive) のため自己 exception 不要
-# sibling path dep は 0 (alice-stubs は no-op)
+# sibling dep は crates.io の alice-db (db feature) のみ、path dep / CI stub は 0
 
 [graph]
 all-features = false
@@ -24,7 +24,7 @@ version = 2
 yanked = "deny"
 ignore = [
     # rkyv 0.7 Rc/Arc archive validation OOB (alice-db 経由 transitive、local path dep のみ): alice-db の
-    # archived 型に Rc/Arc 無し = 非該当 (alice-db 側の判定と同期、CI では alice-db は stub で不在)
+    # archived 型に Rc/Arc 無し = 非該当 (alice-db 側の判定と同期、CI も crates.io の alice-db 実体で check)
     "RUSTSEC-2026-0235",
     # bincode 2.x unmaintained (postcard 移行コスト高)
     "RUSTSEC-2025-0141",
@@ -90,7 +90,7 @@ license-files = [{ path = "LICENSE", hash = 0x001c7e6c }]
 name = "alice-ml"
 allow = ["AGPL-3.0", "AGPL-3.0-only", "AGPL-3.0-or-later"]
 
-# AGPL sibling path dep (db feature、CI では MIT stub / local は実 crate)
+# AGPL sibling dep (db feature、crates.io の alice-db 0.2.0-beta.2)
 [[licenses.exceptions]]
 name = "alice-db"
 allow = ["AGPL-3.0", "AGPL-3.0-only", "AGPL-3.0-or-later"]

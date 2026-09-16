@@ -30,7 +30,7 @@ libm = "0.2"
 rayon = { version = "1.10", optional = true }
 pyo3 = { version = "0.29", features = ["extension-module"], optional = true }
 numpy = { version = "0.29", optional = true }
-alice-db = { path = "../ALICE-DB", version = "0.2.0-beta.1", optional = true, default-features = false }
+alice-db = { version = "0.2.0-beta.2", optional = true, default-features = false }
 
 [dev-dependencies]
 criterion = "0.5"

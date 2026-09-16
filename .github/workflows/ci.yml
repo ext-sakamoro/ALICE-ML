@@ -8,7 +8,7 @@ name: CI
 #   は cdylib の panic_handler / allocator 要求で落ちる → `cargo rustc --crate-type rlib` で検証、
 #   bare-metal target (thumbv7em) で本物の no_std を証明 (2026-09-15 まで no_std build は一度も通っておらず
 #   CI も見ていなかった = claim が偽だった)
-# - feature-powerset: std 固定で depth 2 (pyo3 = Python toolchain / db = sibling 実体 / neon = aarch64 のみ、除外)
+# - feature-powerset: std 固定で depth 2 (pyo3 = Python toolchain / neon = aarch64 のみ、除外; db は crates.io の alice-db 実体で check)
 
 on:
   push:
@@ -19,35 +19,14 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-Dwarnings"
-  # full native feature set (pyo3 / db / neon を除く、clippy / test で共用)
-  NATIVE_FEATURES: "ffi,simd,parallel,safetensors"
+  # full native feature set (pyo3 / neon を除く、clippy / test / doc で共用)
+  NATIVE_FEATURES: "ffi,simd,parallel,safetensors,db"
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Create dependency stubs
-        run: |
-          # dir:crate:version — version は Cargo.toml 要件 (alice-db ^0.2.0-beta.1) を満たすこと
-          for crate_info in \
-            "ALICE-DB:alice-db:0.2.0-beta.1"; do
-            dir=$(echo "$crate_info" | cut -d: -f1)
-            pkg=$(echo "$crate_info" | cut -d: -f2)
-            ver=$(echo "$crate_info" | cut -d: -f3)
-            mkdir -p "../$dir/src"
-            cat > "../$dir/Cargo.toml" << TOML
-          [package]
-          name = "$pkg"
-          version = "$ver"
-          edition = "2021"
-          license = "MIT OR Apache-2.0"
-          [features]
-          default = []
-          std = []
-          TOML
-            echo "" > "../$dir/src/lib.rs"
-          done
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Test (default)
@@ -57,13 +36,27 @@ jobs:
       - name: Test (full native feature set)
         run: cargo test --lib --tests --features "$NATIVE_FEATURES"
 
+  # aarch64 runner: the NEON kernel (`neon` feature, cfg(target_arch = "aarch64"))
+  # is held to the same closed-form oracle as the scalar / AVX2 paths
+  neon:
+    name: neon (aarch64, macos-latest)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy (neon, all targets, pedantic + nursery)
+        run: cargo clippy --features "$NATIVE_FEATURES,neon" --all-targets -- -W clippy::pedantic -W clippy::nursery -D warnings
+      - name: Test (neon)
+        run: cargo test --lib --tests --features "$NATIVE_FEATURES,neon"
+
   no_std:
     name: no_std (rlib、host + bare-metal thumbv7em)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Create ALICE optional bridge stubs
-        uses: ./.github/actions/alice-stubs
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: thumbv7em-none-eabihf
@@ -86,27 +79,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Create dependency stubs
-        run: |
-          # dir:crate:version — version は Cargo.toml 要件 (alice-db ^0.2.0-beta.1) を満たすこと
-          for crate_info in \
-            "ALICE-DB:alice-db:0.2.0-beta.1"; do
-            dir=$(echo "$crate_info" | cut -d: -f1)
-            pkg=$(echo "$crate_info" | cut -d: -f2)
-            ver=$(echo "$crate_info" | cut -d: -f3)
-            mkdir -p "../$dir/src"
-            cat > "../$dir/Cargo.toml" << TOML
-          [package]
-          name = "$pkg"
-          version = "$ver"
-          edition = "2021"
-          license = "MIT OR Apache-2.0"
-          [features]
-          default = []
-          std = []
-          TOML
-            echo "" > "../$dir/src/lib.rs"
-          done
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -121,15 +93,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Create ALICE optional bridge stubs
-        uses: ./.github/actions/alice-stubs
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
       # std 固定: std なしの組合せは cdylib link 要求で落ちるため no_std job 側で rlib として検証
       - name: Powerset (std + {ffi, simd, parallel, safetensors} depth 2)
-        run: cargo hack check --lib --feature-powerset --depth 2 --exclude-features pyo3,db,neon --features std
+        run: cargo hack check --lib --feature-powerset --depth 2 --exclude-features pyo3,neon --features std
 
   fmt:
     runs-on: ubuntu-latest
@@ -144,27 +114,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Create dependency stubs
-        run: |
-          # dir:crate:version — version は Cargo.toml 要件 (alice-db ^0.2.0-beta.1) を満たすこと
-          for crate_info in \
-            "ALICE-DB:alice-db:0.2.0-beta.1"; do
-            dir=$(echo "$crate_info" | cut -d: -f1)
-            pkg=$(echo "$crate_info" | cut -d: -f2)
-            ver=$(echo "$crate_info" | cut -d: -f3)
-            mkdir -p "../$dir/src"
-            cat > "../$dir/Cargo.toml" << TOML
-          [package]
-          name = "$pkg"
-          version = "$ver"
-          edition = "2021"
-          license = "MIT OR Apache-2.0"
-          [features]
-          default = []
-          std = []
-          TOML
-            echo "" > "../$dir/src/lib.rs"
-          done
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Doc (full native feature set)

@@ -16,8 +16,11 @@ All notable changes to ALICE-ML will be documented in this file.
 - `#![deny(clippy::undocumented_unsafe_blocks)]`: 手書き `unsafe` block 212 個 (ffi 195 / neon 6 / tensor 8 / arena 2 / ops 1) 全てに `// SAFETY:` で不変条件を記載
 
 ### Changed
+- `alice-db` は crates.io の `0.2.0-beta.2` (path dep 廃止) CI の "dependency stubs" (空 crate、`db` feature を何も compile しない偽 gate) と `alice-stubs` action を撤去、`db` を native feature set と feature-powerset に含めて実体で check
 - release profile の `panic = "abort"` を除去 (`catch_unwind` を無効化するため、理由は `Cargo.toml` の comment)
 - `libm = "0.2"` を依存に追加 (`no_std` build のみ使用) `no_std` 時の `exp` / `sqrt` 等は platform libm と最終 ulp で異なりうる (ternary matvec の bit-exact 性は不変、`src/math.rs` doc 参照)
+- `tests/analytic_oracle.rs`: 閉形式 oracle 11 本 — ternary matvec は packed / bit-parallel / SIMD dispatch / `from_packed_weight` / batch / INT8 入力の全 kernel を `y = γ·(Σ₊x − Σ₋x)` と `in_features = 1..=70` (NEON 4 lane / AVX2 8 lane / 32-bit word の端数 path 全部) で `==` 突合、quantize は `W ∈ {−a, 0, +a}` の自己再現 + γ = mean|W| + 正のスケール同変 + 丸め閾値 γ/2 (温度 τ で τγ/2)、圧縮率の bit 幅法則、softmax (Σ = 1 / shift 不変 / 2 要素閉形式 / fast 版は Schraudolph 6 % 内 + 順位保存)、layer norm (mean 0 / var 1 / affine 不変 / eps 独立)、rms norm (rms 1 / x/rms(x) 一致 / scale 不変)
+- CI `neon` job (macos-latest = aarch64): NEON kernel を同じ oracle で clippy + test (今まで NEON path は CI で一度も走っていなかった)
 - CI: clippy を `--all-targets` + full native feature set (`ffi,simd,parallel,safetensors`) で `-D warnings`、`no_std` job (host + thumbv7em + clippy-driver wrapper)、`feature-powerset` job (cargo-hack、std 固定 depth 2)、test / doc も full native feature set を追加、rust-cache
 
 ## [0.2.0] - 2026-03-06

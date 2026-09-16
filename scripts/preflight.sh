@@ -21,9 +21,6 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "missing tool: $1 ($2)" >&2; 
 has_toolchain() { rustup toolchain list | grep -q "^$1"; }
 
 # Steps CI runs that this file cannot reproduce locally (they can only fail remotely):
-#   - ci.yml:test:Create dependency stubs (no cargo / grep)
-#   - ci.yml:clippy:Create dependency stubs (no cargo / grep)
-#   - ci.yml:doc:Create dependency stubs (no cargo / grep)
 #   - security-audit.yml:audit:Install cargo-audit (needs network / runner-only)
 #   - security-audit.yml:deny:Install cargo-deny (needs network / runner-only)
 #   - security-audit.yml:coverage (job is continue-on-error: informational in CI)
@@ -40,36 +37,40 @@ need cargo-deny "cargo install cargo-deny --locked"
 need cargo-hack "cargo install cargo-hack --locked"
 need cargo-machete "cargo install cargo-machete --locked"
 
+step "ci.yml / neon: Clippy (neon, all targets, pedantic + nursery)"
+relint
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo clippy --features "$NATIVE_FEATURES,neon" --all-targets -- -W clippy::pedantic -W clippy::nursery -D warnings )
+
 step "ci.yml / no_std: Build (no_std, host)"
-( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors"; cargo rustc --lib --no-default-features --crate-type rlib )
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo rustc --lib --no-default-features --crate-type rlib )
 
 step "ci.yml / no_std: Build (no_std + simd, host)"
-( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors"; cargo rustc --lib --no-default-features --features simd --crate-type rlib )
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo rustc --lib --no-default-features --features simd --crate-type rlib )
 
 step "ci.yml / no_std: Build (no_std, bare-metal thumbv7em-none-eabihf)"
 rustup target list --installed | grep -q '^thumbv7em-none-eabihf$' || rustup target add thumbv7em-none-eabihf
-( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors"; cargo rustc --lib --no-default-features --crate-type rlib --target thumbv7em-none-eabihf )
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo rustc --lib --no-default-features --crate-type rlib --target thumbv7em-none-eabihf )
 
 step "ci.yml / no_std: Clippy (no_std, pedantic + nursery)"
 relint
-( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors"; RUSTC_WORKSPACE_WRAPPER="$(rustup which clippy-driver)" cargo rustc --lib --no-default-features --crate-type rlib -- -W clippy::pedantic -W clippy::nursery -D warnings )
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; RUSTC_WORKSPACE_WRAPPER="$(rustup which clippy-driver)" cargo rustc --lib --no-default-features --crate-type rlib -- -W clippy::pedantic -W clippy::nursery -D warnings )
 
 step "ci.yml / clippy: Clippy (default features, all targets)"
 relint
-( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors"; cargo clippy --all-targets -- -D warnings )
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo clippy --all-targets -- -D warnings )
 
 step "ci.yml / clippy: Clippy (full native feature set, all targets, pedantic + nursery)"
 relint
-( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors"; cargo clippy --features "$NATIVE_FEATURES" --all-targets -- -W clippy::pedantic -W clippy::nursery -D warnings )
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo clippy --features "$NATIVE_FEATURES" --all-targets -- -W clippy::pedantic -W clippy::nursery -D warnings )
 
 step "ci.yml / feature-powerset: Powerset (std + {ffi, simd, parallel, safetensors} depth 2)"
-( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors"; cargo hack check --lib --feature-powerset --depth 2 --exclude-features pyo3,db,neon --features std )
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo hack check --lib --feature-powerset --depth 2 --exclude-features pyo3,neon --features std )
 
 step "ci.yml / fmt: run"
-( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors"; cargo fmt -- --check )
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo fmt -- --check )
 
 step "ci.yml / doc: Doc (full native feature set)"
-( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors" RUSTDOCFLAGS="-Dwarnings"; cargo doc --no-deps --features "$NATIVE_FEATURES" )
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db" RUSTDOCFLAGS="-Dwarnings"; cargo doc --no-deps --features "$NATIVE_FEATURES" )
 
 step "ci.yml / actionlint: actionlint"
 actionlint .github/workflows/*.yml
@@ -149,13 +150,16 @@ if [[ $quick -eq 1 ]]; then
 fi
 
 step "ci.yml / test: Test (default)"
-( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors"; cargo test --lib --tests )
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo test --lib --tests )
 
 step "ci.yml / test: Test (simd)"
-( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors"; cargo test --lib --tests --features simd )
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo test --lib --tests --features simd )
 
 step "ci.yml / test: Test (full native feature set)"
-( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors"; cargo test --lib --tests --features "$NATIVE_FEATURES" )
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo test --lib --tests --features "$NATIVE_FEATURES" )
+
+step "ci.yml / neon: Test (neon)"
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo test --lib --tests --features "$NATIVE_FEATURES,neon" )
 
 step "security-audit.yml / audit: Run cargo audit"
 (
