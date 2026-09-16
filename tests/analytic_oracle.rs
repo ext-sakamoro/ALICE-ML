@@ -13,6 +13,9 @@
 //! f32 accumulation is exact and the assertions are `==`, not tolerances
 
 #![allow(clippy::cast_precision_loss)] // small integer counts → f32
+#![allow(clippy::float_cmp)] // integer-valued f32 results are compared exactly on purpose
+#![allow(clippy::many_single_char_names, clippy::similar_names)]
+#![allow(clippy::suboptimal_flops, clippy::identity_op)] // oracle formulas are written as the law reads
 
 use alice_ml::{
     dequantize_from_ternary, quantize_to_ternary, quantize_to_ternary_qat, tensor_layer_norm,
@@ -412,5 +415,462 @@ fn rms_norm_output_has_unit_rms_and_is_scale_invariant() {
         for (p, q) in o.iter().zip(&o2) {
             assert!((p - q).abs() < 1e-5, "n={n}: {p} vs {q}");
         }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Element-wise / reduction ops: exact on integer inputs for every length across
+// the 8-lane AVX2 boundary (the SIMD path has a chunk loop + remainder loop)
+// ----------------------------------------------------------------------------
+
+use alice_ml::{
+    compute_quantization_error, quantize_to_ternary_sparse, tensor_add, tensor_copy, tensor_max,
+    tensor_mean, tensor_min, tensor_relu, tensor_relu_inplace, tensor_scale, tensor_sub,
+    tensor_sum, OwnedTensor, QuantStats,
+};
+
+#[test]
+fn elementwise_and_reduction_ops_are_exact_on_integer_inputs_for_every_length() {
+    for n in 1..=40usize {
+        let a = int_input(n);
+        let b: Vec<f32> = (0..n).map(|i| (i % 5) as f32 - 2.0).collect();
+        let (mut av, mut bv, mut out) = (a.clone(), b.clone(), vec![0.0f32; n]);
+        let ta = Tensor::from_arena(&mut av, &[n]);
+        let tb = Tensor::from_arena(&mut bv, &[n]);
+
+        tensor_add(&ta, &tb, &mut Tensor::from_arena(&mut out, &[n]));
+        assert_eq!(
+            out,
+            a.iter().zip(&b).map(|(x, y)| x + y).collect::<Vec<_>>(),
+            "add n={n}"
+        );
+        tensor_sub(&ta, &tb, &mut Tensor::from_arena(&mut out, &[n]));
+        assert_eq!(
+            out,
+            a.iter().zip(&b).map(|(x, y)| x - y).collect::<Vec<_>>(),
+            "sub n={n}"
+        );
+        tensor_scale(&ta, -1.5, &mut Tensor::from_arena(&mut out, &[n]));
+        assert_eq!(
+            out,
+            a.iter().map(|x| x * -1.5).collect::<Vec<_>>(),
+            "scale n={n}"
+        );
+        tensor_relu(&ta, &mut Tensor::from_arena(&mut out, &[n]));
+        assert_eq!(
+            out,
+            a.iter().map(|x| x.max(0.0)).collect::<Vec<_>>(),
+            "relu n={n}"
+        );
+        let mut inplace = a.clone();
+        tensor_relu_inplace(&mut Tensor::from_arena(&mut inplace, &[n]));
+        assert_eq!(inplace, out, "relu_inplace n={n}");
+        tensor_copy(&ta, &mut Tensor::from_arena(&mut out, &[n]));
+        assert_eq!(out, a, "copy n={n}");
+
+        // Σ, mean, max, min of (i % 7) − 3 are integers: exact
+        let sum: f32 = a.iter().sum();
+        assert_eq!(tensor_sum(&ta), sum, "sum n={n}");
+        assert_eq!(tensor_mean(&ta), sum / n as f32, "mean n={n}");
+        assert_eq!(
+            tensor_max(&ta),
+            a.iter().copied().fold(f32::NEG_INFINITY, f32::max),
+            "max n={n}"
+        );
+        assert_eq!(
+            tensor_min(&ta),
+            a.iter().copied().fold(f32::INFINITY, f32::min),
+            "min n={n}"
+        );
+        // the extreme sits in the remainder lane for n % 8 != 0 when placed last
+        let mut tail = a.clone();
+        tail[n - 1] = 100.0;
+        assert_eq!(
+            tensor_max(&Tensor::from_arena(&mut tail, &[n])),
+            100.0,
+            "max tail n={n}"
+        );
+        tail[n - 1] = -100.0;
+        assert_eq!(
+            tensor_min(&Tensor::from_arena(&mut tail, &[n])),
+            -100.0,
+            "min tail n={n}"
+        );
+    }
+    // empty tensor: identities of the reductions
+    let mut e: Vec<f32> = Vec::new();
+    let te = Tensor::from_arena(&mut e, &[0]);
+    assert!(te.is_empty());
+    assert_eq!(tensor_sum(&te), 0.0);
+    assert_eq!(tensor_max(&te), f32::NEG_INFINITY);
+    assert_eq!(tensor_min(&te), f32::INFINITY);
+}
+
+#[test]
+fn tensor_accessors_and_owned_tensor_are_consistent() {
+    let mut data = int_input(12);
+    let mut t = Tensor::from_arena(&mut data, &[3, 4]);
+    assert!(!t.is_empty());
+    assert_eq!(t.len(), 12);
+    assert_eq!(t.get(&[1, 2]), t.get_flat(6));
+    assert_eq!(t.get_flat(6), (6 % 7) as f32 - 3.0);
+    t.set(&[2, 3], 42.0);
+    assert_eq!(t.get_flat(11), 42.0);
+    t.set_flat(0, -7.0);
+    assert_eq!(t.get(&[0, 0]), -7.0);
+    assert_eq!(t.data()[0], -7.0);
+
+    let owned = OwnedTensor::from_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]);
+    assert_eq!(owned.len(), 6);
+    assert!(!owned.is_empty());
+    assert_eq!(owned.shape(), &[2, 3]);
+    assert_eq!(owned.data(), &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    let mut owned = owned;
+    owned.data_mut()[5] = 60.0;
+    assert_eq!(owned.data()[5], 60.0);
+    let empty = OwnedTensor::from_slice(&[], &[0]);
+    assert!(empty.is_empty());
+    assert_eq!(empty.len(), 0);
+    let q = QuantizedTensor::from_f32_slice(&[1.0, -2.0], &[2]);
+    assert!(!q.is_empty());
+    assert_eq!(q.len(), 2);
+    let q0 = QuantizedTensor::from_f32_slice(&[], &[0]);
+    assert!(q0.is_empty());
+}
+
+#[test]
+fn layer_norm_and_rms_norm_apply_weight_and_bias_per_element() {
+    let n = 9usize;
+    let mut a = ramp(n);
+    let mut w: Vec<f32> = (0..n).map(|i| 0.5 + i as f32).collect();
+    let mut b: Vec<f32> = (0..n).map(|i| -(i as f32)).collect();
+    let mut plain = vec![0.0f32; n];
+    let mut scaled = vec![0.0f32; n];
+    tensor_layer_norm(
+        &Tensor::from_arena(&mut a, &[n]),
+        None,
+        None,
+        0.0,
+        &mut Tensor::from_arena(&mut plain, &[n]),
+    );
+    tensor_layer_norm(
+        &Tensor::from_arena(&mut a, &[n]),
+        Some(&Tensor::from_arena(&mut w, &[n])),
+        Some(&Tensor::from_arena(&mut b, &[n])),
+        0.0,
+        &mut Tensor::from_arena(&mut scaled, &[n]),
+    );
+    for i in 0..n {
+        assert!(
+            (scaled[i] - (plain[i] * w[i] + b[i])).abs() < 1e-5,
+            "layer_norm {i}"
+        );
+    }
+    // a large eps shrinks the output: out = (x − mean) / sqrt(var + eps)
+    let mut big = vec![0.0f32; n];
+    tensor_layer_norm(
+        &Tensor::from_arena(&mut a, &[n]),
+        None,
+        None,
+        3.0,
+        &mut Tensor::from_arena(&mut big, &[n]),
+    );
+    let mean = a.iter().sum::<f32>() / n as f32;
+    let var = a.iter().map(|x| (x - mean) * (x - mean)).sum::<f32>() / n as f32;
+    for i in 0..n {
+        assert!(
+            (big[i] - plain[i] * (var / (var + 3.0)).sqrt()).abs() < 1e-5,
+            "eps {i}"
+        );
+    }
+    tensor_rms_norm(
+        &Tensor::from_arena(&mut a, &[n]),
+        None,
+        0.0,
+        &mut Tensor::from_arena(&mut plain, &[n]),
+    );
+    tensor_rms_norm(
+        &Tensor::from_arena(&mut a, &[n]),
+        Some(&Tensor::from_arena(&mut w, &[n])),
+        0.0,
+        &mut Tensor::from_arena(&mut scaled, &[n]),
+    );
+    for i in 0..n {
+        assert!((scaled[i] - plain[i] * w[i]).abs() < 1e-5, "rms_norm {i}");
+    }
+    tensor_rms_norm(
+        &Tensor::from_arena(&mut a, &[n]),
+        None,
+        3.0,
+        &mut Tensor::from_arena(&mut big, &[n]),
+    );
+    let ms = a.iter().map(|x| x * x).sum::<f32>() / n as f32;
+    for i in 0..n {
+        assert!(
+            (big[i] - plain[i] * (ms / (ms + 3.0)).sqrt()).abs() < 1e-5,
+            "rms eps {i}"
+        );
+    }
+}
+
+#[test]
+fn softmax_rows_are_independent_and_all_minus_inf_rows_become_uniform() {
+    // two rows of a [2, 4] tensor: each row sums to 1, each equals its own 1-D softmax
+    let mut a = vec![0.0f32, 1.0, 2.0, 3.0, -1.0, -1.0, 5.0, 0.5];
+    let mut o = vec![0.0f32; 8];
+    let mut o_fast = vec![0.0f32; 8];
+    tensor_softmax(
+        &Tensor::from_arena(&mut a, &[2, 4]),
+        &mut Tensor::from_arena(&mut o, &[2, 4]),
+    );
+    tensor_softmax_fast(
+        &Tensor::from_arena(&mut a, &[2, 4]),
+        &mut Tensor::from_arena(&mut o_fast, &[2, 4]),
+    );
+    for r in 0..2 {
+        let row = &o[r * 4..(r + 1) * 4];
+        assert!((row.iter().sum::<f32>() - 1.0).abs() < 1e-5);
+        let mut single = a[r * 4..(r + 1) * 4].to_vec();
+        let mut single_o = vec![0.0f32; 4];
+        tensor_softmax(
+            &Tensor::from_arena(&mut single, &[4]),
+            &mut Tensor::from_arena(&mut single_o, &[4]),
+        );
+        assert_eq!(row, &single_o[..], "row {r}");
+        let fast = &o_fast[r * 4..(r + 1) * 4];
+        assert!((fast.iter().sum::<f32>() - 1.0).abs() < 1e-5);
+        for (p, q) in row.iter().zip(fast) {
+            assert!((p - q).abs() <= 0.06 * p, "fast row {r}: {p} vs {q}");
+        }
+    }
+    // −inf everywhere: the fast variant falls back to a uniform row
+    let mut neg = vec![f32::NEG_INFINITY; 4];
+    let mut u = vec![0.0f32; 4];
+    tensor_softmax_fast(
+        &Tensor::from_arena(&mut neg, &[4]),
+        &mut Tensor::from_arena(&mut u, &[4]),
+    );
+    assert_eq!(u, vec![0.25; 4]);
+}
+
+// ----------------------------------------------------------------------------
+// Quantisation statistics and the sparse / QAT variants
+// ----------------------------------------------------------------------------
+
+#[test]
+fn quant_stats_counts_range_mae_sparsity_and_entropy_follow_their_definitions() {
+    // 12 weights: 4 clear positives, 3 clear negatives, 5 near zero
+    let w = [
+        2.0f32, 2.0, 2.0, 2.0, -2.0, -2.0, -2.0, 0.1, -0.1, 0.05, 0.0, 0.2,
+    ];
+    let (q, s) = quantize_to_ternary(&w, 3, 4);
+    let gamma = w.iter().map(|x| x.abs()).sum::<f32>() / 12.0;
+    assert!((s.scale - gamma).abs() < 1e-6);
+    assert_eq!((s.plus_count, s.minus_count, s.zero_count), (4, 3, 5));
+    assert_eq!(s.original_range, (-2.0, 2.0));
+    assert!((s.sparsity() - 5.0 / 12.0).abs() < 1e-6);
+    let mae: f32 = w
+        .iter()
+        .zip(dequantize_from_ternary(&q))
+        .map(|(x, d)| (x - d).abs())
+        .sum::<f32>()
+        / 12.0;
+    assert!((s.mae - mae).abs() < 1e-6);
+    // Shannon entropy of the three symbol probabilities, in bits
+    let h = |p: f32| if p > 0.0 { -p * p.log2() } else { 0.0 };
+    let entropy = h(4.0 / 12.0) + h(3.0 / 12.0) + h(5.0 / 12.0);
+    assert!(
+        (s.effective_bits() - entropy).abs() < 1e-5,
+        "{} vs {entropy}",
+        s.effective_bits()
+    );
+    // uniform ternary → log2(3); a single symbol → 0 bits; empty → 0
+    let uniform = QuantStats {
+        plus_count: 5,
+        minus_count: 5,
+        zero_count: 5,
+        ..Default::default()
+    };
+    assert!((uniform.effective_bits() - 3f32.log2()).abs() < 1e-6);
+    let single = QuantStats {
+        plus_count: 7,
+        ..Default::default()
+    };
+    assert_eq!(single.effective_bits(), 0.0);
+    assert_eq!(single.sparsity(), 0.0);
+    assert_eq!(QuantStats::default().effective_bits(), 0.0);
+    assert_eq!(QuantStats::default().sparsity(), 0.0);
+
+    // error metrics from the dequantised weights, by definition
+    let e = compute_quantization_error(&w, &q);
+    let deq = dequantize_from_ternary(&q);
+    let errs: Vec<f32> = w.iter().zip(&deq).map(|(x, d)| (x - d).abs()).collect();
+    let mse = errs.iter().map(|e| e * e).sum::<f32>() / 12.0;
+    assert!((e.mae - mae).abs() < 1e-6);
+    assert!((e.mse - mse).abs() < 1e-6);
+    assert!((e.rmse - mse.sqrt()).abs() < 1e-6);
+    assert_eq!(e.max_error, errs.iter().copied().fold(0.0, f32::max));
+    let signal = w.iter().map(|x| x * x).sum::<f32>();
+    let noise = errs.iter().map(|e| e * e).sum::<f32>();
+    assert!((e.snr - 10.0 * (signal / noise).log10()).abs() < 1e-4);
+    // exact reconstruction (γ given as 1) → infinite SNR
+    let exact = [1.0f32, -1.0, 0.0, 1.0];
+    let (q, _) = quantize_to_ternary_qat(&exact, 1, 4, 1.0, 1.0);
+    assert_eq!(compute_quantization_error(&exact, &q).snr, f32::INFINITY);
+}
+
+#[test]
+fn sparse_quantisation_zeroes_exactly_the_weights_below_threshold_times_scale() {
+    let w = [3.0f32, -3.0, 1.0, -1.0, 0.5, -0.5, 0.0, 2.0];
+    let gamma = w.iter().map(|x| x.abs()).sum::<f32>() / 8.0; // 11/8 = 1.375
+    for threshold in [0.0f32, 0.5, 0.8, 1.0, 1.5, 3.0] {
+        let (q, s) = quantize_to_ternary_sparse(&w, 2, 4, threshold);
+        let cutoff = threshold * gamma;
+        let mut expected_plus = 0;
+        let mut expected_minus = 0;
+        let mut expected_zero = 0;
+        for (i, &x) in w.iter().enumerate() {
+            let t = if x.abs() < cutoff {
+                0
+            } else if x > 0.0 {
+                1
+            } else {
+                -1
+            };
+            assert_eq!(
+                q.get(i / 4, i % 4).to_i8(),
+                t,
+                "threshold {threshold} weight {x}"
+            );
+            match t {
+                1 => expected_plus += 1,
+                -1 => expected_minus += 1,
+                _ => expected_zero += 1,
+            }
+        }
+        assert_eq!(
+            (s.plus_count, s.minus_count, s.zero_count),
+            (expected_plus, expected_minus, expected_zero)
+        );
+        assert!((s.scale - gamma).abs() < 1e-6);
+        assert_eq!(s.original_range, (-3.0, 3.0));
+        let deq = dequantize_from_ternary(&q);
+        let mae = w.iter().zip(&deq).map(|(x, d)| (x - d).abs()).sum::<f32>() / 8.0;
+        assert!((s.mae - mae).abs() < 1e-6, "threshold {threshold}");
+    }
+    // threshold 0 keeps every non-zero weight; an exact 0.0 is 0 for x > 0.0 false and x < cutoff false → −1 branch? No: 0.0 < 0.0 is false and 0.0 > 0.0 is false, so the sign branch gives −1
+    let (q, _) = quantize_to_ternary_sparse(&[0.0f32, 1.0], 1, 2, 0.0);
+    assert_eq!(q.get(0, 0).to_i8(), -1);
+}
+
+#[test]
+fn qat_quantisation_reports_stats_like_the_plain_law_with_the_given_scale() {
+    let w = [0.9f32, -0.9, 0.3, -0.3, 0.0, 1.7, -1.2, 0.45];
+    let (gamma, tau) = (1.0f32, 1.0f32);
+    let (q, s) = quantize_to_ternary_qat(&w, 2, 4, gamma, tau);
+    assert_eq!(s.scale, gamma);
+    assert_eq!(s.original_range, (-1.2, 1.7));
+    // q = round(w / γ / τ) clamped: 0.9 → 1, 0.3 → 0, 0.45 → 0, 1.7 → 1, −1.2 → −1
+    let expected = [1i8, -1, 0, 0, 0, 1, -1, 0];
+    for (i, &t) in expected.iter().enumerate() {
+        assert_eq!(q.get(i / 4, i % 4).to_i8(), t, "weight {}", w[i]);
+    }
+    assert_eq!((s.plus_count, s.minus_count, s.zero_count), (2, 2, 4));
+    let mae = w
+        .iter()
+        .zip(expected)
+        .map(|(x, t)| (x - f32::from(t) * gamma).abs())
+        .sum::<f32>()
+        / 8.0;
+    assert!((s.mae - mae).abs() < 1e-6, "{} vs {mae}", s.mae);
+    // a temperature of 2 doubles the rounding threshold: 0.9 / 2 = 0.45 → 0
+    let (q2, s2) = quantize_to_ternary_qat(&w, 2, 4, gamma, 2.0);
+    assert_eq!(q2.get(0, 0).to_i8(), 0);
+    assert_eq!(q2.get(1, 1).to_i8(), 1); // 1.7 / 2 = 0.85 → 1
+    assert_eq!((s2.plus_count, s2.minus_count, s2.zero_count), (1, 1, 6));
+}
+
+// ----------------------------------------------------------------------------
+// Bit-plane kernel accessors and the packed-byte mask helpers
+// ----------------------------------------------------------------------------
+
+#[test]
+fn kernel_bit_planes_are_the_ternary_pattern_and_scale_is_stored() {
+    let values = pattern(2, 40); // [+1, −1, 0] repeating, 2 words per row
+    let k = TernaryWeightKernel::from_ternary_scaled(&values, 2, 40, 0.75);
+    assert_eq!(k.scale(), 0.75);
+    assert_eq!(k.words_per_row(), 2);
+    assert_eq!(k.plus_bits().len(), 4);
+    assert_eq!(k.minus_bits().len(), 4);
+    for r in 0..2 {
+        for c in 0..40 {
+            let word = r * 2 + c / 32;
+            let bit = c % 32;
+            let plus = (k.plus_bits()[word] >> bit) & 1 == 1;
+            let minus = (k.minus_bits()[word] >> bit) & 1 == 1;
+            let v = values[r * 40 + c];
+            assert_eq!((plus, minus), (v == 1, v == -1), "({r},{c})");
+        }
+    }
+    // the packed 2-bit form: 01 = +1, 10 = −1, 00 = 0, four per byte, low first
+    let packed = TernaryWeight::from_ternary(&[1, -1, 0, 1], 1, 4);
+    assert_eq!(packed.packed(), &[0b0100_1001]);
+    assert_eq!(alice_ml::ops::extract_plus_mask(0b0100_1001), 0b1001);
+    assert_eq!(alice_ml::ops::extract_minus_mask(0b0100_1001), 0b0010);
+    for byte in 0..=255u8 {
+        let plus = alice_ml::ops::extract_plus_mask(byte);
+        let minus = alice_ml::ops::extract_minus_mask(byte);
+        for i in 0..4 {
+            let field = (byte >> (2 * i)) & 0b11;
+            assert_eq!(
+                (plus >> i) & 1,
+                u8::from(field == 0b01),
+                "byte {byte:#010b} field {i}"
+            );
+            assert_eq!(
+                (minus >> i) & 1,
+                u8::from(field == 0b10),
+                "byte {byte:#010b} field {i}"
+            );
+        }
+    }
+}
+
+#[test]
+fn matmul_alloc_matches_the_batched_kernel_for_1d_and_2d_inputs() {
+    use alice_ml::{ternary_matmul_alloc, ternary_matvec_alloc};
+    let (out_features, in_features) = (3usize, 33usize);
+    let values = pattern(out_features, in_features);
+    let packed = TernaryWeight::from_ternary(&values, out_features, in_features);
+    let mut x = int_input(in_features);
+    let expected = oracle_matvec(&values, out_features, in_features, &x, 1.0);
+    let t1 = Tensor::from_arena(&mut x, &[in_features]);
+    assert_eq!(ternary_matvec_alloc(&t1, &packed).data(), &expected[..]);
+    let one = ternary_matmul_alloc(&t1, &packed);
+    assert_eq!(one.shape(), &[out_features]);
+    assert_eq!(one.data(), &expected[..]);
+    // a [1, in] input keeps the 1-D output shape; [b, in] gives [b, out]
+    let mut x1 = int_input(in_features);
+    let one_row = ternary_matmul_alloc(&Tensor::from_arena(&mut x1, &[1, in_features]), &packed);
+    assert_eq!(one_row.shape(), &[out_features]);
+    assert_eq!(one_row.data(), &expected[..]);
+    let batch = 4usize;
+    let mut xb: Vec<f32> = (0..batch)
+        .flat_map(|b| {
+            int_input(in_features)
+                .into_iter()
+                .map(move |v| v + b as f32)
+        })
+        .collect();
+    let out = ternary_matmul_alloc(&Tensor::from_arena(&mut xb, &[batch, in_features]), &packed);
+    assert_eq!(out.shape(), &[batch, out_features]);
+    for b in 0..batch {
+        let xrow = &xb[b * in_features..(b + 1) * in_features];
+        let e = oracle_matvec(&values, out_features, in_features, xrow, 1.0);
+        assert_eq!(
+            &out.data()[b * out_features..(b + 1) * out_features],
+            &e[..],
+            "row {b}"
+        );
     }
 }

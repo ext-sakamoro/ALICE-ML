@@ -4,4 +4,10 @@
 # - src/python.rs — PyO3 bindings behind the `pyo3` feature, which needs an
 #   interpreter and is not in the mutants feature set; a mutant there would be
 #   "missed" for the wrong reason (never compiled)
-exclude_globs = ["src/python.rs"]
+# - src/math.rs — the `FloatExt` libm shim exists only for `not(feature = "std")`;
+#   the mutants build has `std`, so the file is not compiled (its correctness is
+#   the bare-metal `no_std` CI job + the oracle tests run there)
+# - src/neon.rs — `cfg(all(target_arch = "aarch64", feature = "neon"))`; the
+#   mutants runner is x86_64, the kernel is held to the closed-form oracle by
+#   the `neon` CI job on macos-latest instead
+exclude_globs = ["src/python.rs", "src/math.rs", "src/neon.rs"]
