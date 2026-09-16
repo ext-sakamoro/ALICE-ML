@@ -1,0 +1,7 @@
+# cargo-mutants configuration (quality-deep.yml)
+#
+# Excluded from mutation (documented, not hidden):
+# - src/python.rs — PyO3 bindings behind the `pyo3` feature, which needs an
+#   interpreter and is not in the mutants feature set; a mutant there would be
+#   "missed" for the wrong reason (never compiled)
+exclude_globs = ["src/python.rs"]
