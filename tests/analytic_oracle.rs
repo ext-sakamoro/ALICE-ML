@@ -874,3 +874,191 @@ fn matmul_alloc_matches_the_batched_kernel_for_1d_and_2d_inputs() {
         );
     }
 }
+
+// ----------------------------------------------------------------------------
+// Ternary Llama-3 forward on a 4-dimensional toy model: every stage is driven
+// through identity / zero projections so the logits have a closed form
+// ----------------------------------------------------------------------------
+
+#[cfg(feature = "safetensors")]
+mod ternary_llama {
+    use alice_ml::llama3_ternary::{Llama3TernaryConfig, Llama3TernaryModel};
+    use alice_ml::model_io::ModelArchive;
+    use alice_ml::TernaryWeight;
+
+    const H: usize = 4; // hidden = vocab = intermediate
+    const KV: usize = 2; // num_kv_heads (1) × head_dim (2)
+
+    fn config() -> Llama3TernaryConfig {
+        Llama3TernaryConfig {
+            vocab_size: H,
+            hidden_dim: H,
+            intermediate_dim: H,
+            num_heads: 2,
+            num_kv_heads: 1,
+            num_layers: 1,
+            max_seq_len: 16,
+            head_dim: 2,
+            rope_theta: 10_000.0,
+            norm_eps: 0.0,
+        }
+    }
+
+    fn zero(out: usize, inp: usize) -> TernaryWeight {
+        TernaryWeight::from_ternary(&vec![0i8; out * inp], out, inp)
+    }
+
+    /// `out × inp` matrix with +1 on the diagonal (row i selects input i)
+    fn identity(out: usize, inp: usize) -> TernaryWeight {
+        let v: Vec<i8> = (0..out * inp)
+            .map(|k| i8::from(k / inp == k % inp))
+            .collect();
+        TernaryWeight::from_ternary(&v, out, inp)
+    }
+
+    fn embedding() -> Vec<f32> {
+        // token t → row t, rows distinct and non-degenerate
+        (0..H * H)
+            .map(|k| (k % H) as f32 + 1.0 + 4.0 * (k / H) as f32)
+            .collect()
+    }
+
+    fn rms_norm(x: &[f32]) -> Vec<f32> {
+        let ms = x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32;
+        x.iter().map(|v| v / ms.sqrt()).collect()
+    }
+
+    fn silu(x: f32) -> f32 {
+        x / (1.0 + (-x).exp())
+    }
+
+    fn model(projs: Vec<TernaryWeight>) -> Llama3TernaryModel {
+        Llama3TernaryModel::from_parts(
+            config(),
+            embedding(),
+            vec![1.0; H],
+            identity(H, H),
+            vec![(vec![1.0; H], vec![1.0; H], projs)],
+        )
+    }
+
+    fn assert_close(a: &[f32], b: &[f32], what: &str) {
+        assert_eq!(a.len(), b.len(), "{what}: length");
+        for (i, (x, y)) in a.iter().zip(b).enumerate() {
+            assert!((x - y).abs() < 1e-4, "{what}[{i}]: {x} vs {y}");
+        }
+    }
+
+    #[test]
+    fn zero_projections_leave_the_embedding_and_logits_are_its_rms_norm() {
+        // attention and FFN contribute nothing → hidden = embedding row →
+        // logits = output_proj(identity) · rms_norm(hidden)
+        let projs = vec![
+            zero(H, H),
+            zero(KV, H),
+            zero(KV, H),
+            zero(H, H),
+            zero(H, H),
+            zero(H, H),
+            zero(H, H),
+        ];
+        let mut m = model(projs);
+        for token in 0..H as u32 {
+            m.clear_cache();
+            let row = &embedding()[token as usize * H..(token as usize + 1) * H];
+            assert_close(&m.forward(token), &rms_norm(row), &format!("token {token}"));
+        }
+        // the KV cache grows but zero projections make every position identical
+        m.clear_cache();
+        let first = m.forward(2);
+        let second = m.forward(2);
+        assert_close(
+            &second,
+            &first,
+            "position independence with zero projections",
+        );
+    }
+
+    #[test]
+    fn identity_value_and_output_projections_add_the_normed_hidden_through_attention() {
+        // q = k = 0 → uniform softmax; v = first KV components of the normed
+        // hidden; both heads read kv head 0; o_proj = identity → hidden +=
+        // [n0, n1, n0, n1]; FFN zero
+        let projs = vec![
+            zero(H, H),
+            zero(KV, H),
+            identity(KV, H),
+            identity(H, H),
+            zero(H, H),
+            zero(H, H),
+            zero(H, H),
+        ];
+        let mut m = model(projs);
+        let token = 1u32;
+        let row = &embedding()[H..2 * H];
+        let n = rms_norm(row);
+        let hidden: Vec<f32> = (0..H).map(|i| row[i] + n[i % 2]).collect();
+        let expected = rms_norm(&hidden);
+        assert_close(&m.forward(token), &expected, "one token");
+        // a second identical token: two cached positions with identical K (= 0)
+        // and identical V → the same average → the same logits
+        assert_close(&m.forward(token), &expected, "two tokens");
+        m.clear_cache();
+        assert_close(&m.forward(token), &expected, "after clear_cache");
+    }
+
+    #[test]
+    fn identity_ffn_adds_silu_gate_times_up_of_the_normed_hidden() {
+        // attention zero; gate = up = down = identity → hidden += silu(n) ⊙ n
+        let projs = vec![
+            zero(H, H),
+            zero(KV, H),
+            zero(KV, H),
+            zero(H, H),
+            identity(H, H),
+            identity(H, H),
+            identity(H, H),
+        ];
+        let mut m = model(projs);
+        let row = &embedding()[2 * H..3 * H];
+        let n = rms_norm(row);
+        let hidden: Vec<f32> = (0..H).map(|i| row[i] + silu(n[i]) * n[i]).collect();
+        assert_close(&m.forward(2), &rms_norm(&hidden), "ffn");
+    }
+
+    #[test]
+    fn memory_bytes_is_the_sum_of_its_parts_and_atml_holds_every_projection() {
+        let projs = vec![
+            zero(H, H),
+            zero(KV, H),
+            zero(KV, H),
+            zero(H, H),
+            zero(H, H),
+            zero(H, H),
+            zero(H, H),
+        ];
+        let expected_bytes = H * H * 4 // embedding
+            + H * 4 // output norm
+            + identity(H, H).memory_bytes()
+            + 2 * H * 4 // two norm weights
+            + projs.iter().map(TernaryWeight::memory_bytes).sum::<usize>();
+        let m = model(projs);
+        assert_eq!(m.memory_bytes(), expected_bytes);
+        let atml = m.save_atml();
+        let archive = ModelArchive::deserialize(&atml).expect("atml parses");
+        // output_proj + 7 per layer
+        assert!(archive.get_layer(7).is_some());
+        assert!(archive.get_layer(8).is_none());
+        let out = archive.get_layer(0).unwrap();
+        assert_eq!((out.out_features, out.in_features), (H, H));
+        assert_eq!(out.packed, identity(H, H).packed());
+        let k = archive.get_layer(2).unwrap();
+        assert_eq!((k.out_features, k.in_features), (KV, H));
+    }
+
+    #[test]
+    #[should_panic(expected = "need 7 projections per layer")]
+    fn from_parts_rejects_a_layer_with_fewer_than_seven_projections() {
+        let _ = model(vec![zero(H, H); 6]);
+    }
+}
