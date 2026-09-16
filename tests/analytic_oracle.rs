@@ -889,7 +889,7 @@ mod ternary_llama {
     const H: usize = 4; // hidden = vocab = intermediate
     const KV: usize = 2; // num_kv_heads (1) × head_dim (2)
 
-    fn config() -> Llama3TernaryConfig {
+    const fn config() -> Llama3TernaryConfig {
         Llama3TernaryConfig {
             vocab_size: H,
             hidden_dim: H,
@@ -963,7 +963,7 @@ mod ternary_llama {
             zero(H, H),
         ];
         let mut m = model(projs);
-        for token in 0..H as u32 {
+        for token in 0..4u32 {
             m.clear_cache();
             let row = &embedding()[token as usize * H..(token as usize + 1) * H];
             assert_close(&m.forward(token), &rms_norm(row), &format!("token {token}"));
