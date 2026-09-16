@@ -1,7 +1,8 @@
 #![allow(clippy::missing_safety_doc)]
 //! C-ABI FFI for ALICE-ML
 //!
-//! 51 `extern "C"` functions with `am_ml_*` prefix.
+//! 67 `extern "C"` functions with `am_ml_*` prefix, every body panic-isolated
+//! (`guarded`, see below).
 //!
 //! - Arena (7): arena lifecycle + alloc
 //! - `TernaryWeight` (8): packed 2-bit weights
@@ -10,7 +11,7 @@
 //! - Tensor DPS ops (13): element-wise ops
 //! - `BitLinear` (5): neural layer
 //! - Quantize (4): FP32 → ternary
-//! - Version (1)
+//! - Version (1) / Error reporting (2): `am_ml_last_error` / `am_ml_clear_last_error`
 //!
 //! Author: Moroya Sakamoto
 
@@ -26,58 +27,142 @@ use crate::ops::{
 use crate::quantize::{compute_quantization_error, dequantize_from_ternary, quantize_to_ternary};
 
 // ============================================================================
+// Panic isolation (every extern "C" entry point)
+// ============================================================================
+//
+// Since Rust 1.81 a panic that reaches an `extern "C"` boundary aborts the
+// process — for a cdylib that is the host (Unity / UE5 / Python / C). Every
+// entry point below runs its body inside `guarded`, which converts a panic
+// into the function's sentinel (null / 0 / -1) and stores the message for
+// `am_ml_last_error`. This needs the default `panic = "unwind"` (see
+// Cargo.toml: the release profile no longer sets `panic = "abort"`).
+
+thread_local! {
+    static LAST_ERROR: core::cell::RefCell<Option<std::ffi::CString>> =
+        const { core::cell::RefCell::new(None) };
+}
+
+fn set_last_error(msg: &str) {
+    let sanitized: String = msg
+        .chars()
+        .map(|c| if c == '\0' { '?' } else { c })
+        .collect();
+    let c = std::ffi::CString::new(sanitized).unwrap_or_default();
+    LAST_ERROR.with(|e| *e.borrow_mut() = Some(c));
+}
+
+fn panic_message(payload: &(dyn core::any::Any + Send)) -> String {
+    payload.downcast_ref::<&str>().map_or_else(
+        || {
+            payload
+                .downcast_ref::<String>()
+                .cloned()
+                .unwrap_or_else(|| "non-string panic payload".to_string())
+        },
+        |s| (*s).to_string(),
+    )
+}
+
+/// Run `body`; a panic is recorded for [`am_ml_last_error`] and `sentinel`
+/// is returned instead of unwinding across the C boundary
+#[inline]
+fn guarded<T>(sentinel: T, body: impl FnOnce() -> T) -> T {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+        Ok(v) => v,
+        Err(payload) => {
+            set_last_error(&format!("internal panic: {}", panic_message(&*payload)));
+            sentinel
+        }
+    }
+}
+
+/// Message of the last Rust panic caught at the FFI boundary on this thread
+/// (NUL-terminated, valid until the next call that records an error), or
+/// null when none was recorded
+#[no_mangle]
+pub extern "C" fn am_ml_last_error() -> *const c_char {
+    guarded(core::ptr::null(), || {
+        LAST_ERROR.with(|e| {
+            e.borrow()
+                .as_ref()
+                .map_or(core::ptr::null(), |c| c.as_ptr())
+        })
+    })
+}
+
+/// Clear the message returned by [`am_ml_last_error`]
+#[no_mangle]
+pub extern "C" fn am_ml_clear_last_error() {
+    guarded((), || LAST_ERROR.with(|e| *e.borrow_mut() = None));
+}
+
+// ============================================================================
 // Arena (7)
 // ============================================================================
 
 /// 指定容量（バイト）のArenaを作成
 #[no_mangle]
 pub extern "C" fn am_ml_arena_new(capacity: usize) -> *mut Arena {
-    Box::into_raw(Box::new(Arena::new(capacity)))
+    guarded(core::ptr::null_mut(), || {
+        Box::into_raw(Box::new(Arena::new(capacity)))
+    })
 }
 
 /// Arenaを解放
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_free(arena: *mut Arena) {
-    if !arena.is_null() {
-        drop(unsafe { Box::from_raw(arena) });
-    }
+    guarded((), || {
+        if !arena.is_null() {
+            drop(unsafe { Box::from_raw(arena) });
+        }
+    });
 }
 
 /// Arenaをリセット（オフセットをゼロに戻す）
 #[no_mangle]
-pub const unsafe extern "C" fn am_ml_arena_reset(arena: *mut Arena) {
-    if let Some(a) = unsafe { arena.as_mut() } {
-        a.reset();
-    }
+pub unsafe extern "C" fn am_ml_arena_reset(arena: *mut Arena) {
+    guarded((), || {
+        if let Some(a) = unsafe { arena.as_mut() } {
+            a.reset();
+        }
+    });
 }
 
 /// Arena使用量（バイト）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_used(arena: *const Arena) -> usize {
-    unsafe { arena.as_ref() }.map_or(0, super::arena::Arena::used)
+    guarded(0, || {
+        unsafe { arena.as_ref() }.map_or(0, super::arena::Arena::used)
+    })
 }
 
 /// Arena容量（バイト）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_capacity(arena: *const Arena) -> usize {
-    unsafe { arena.as_ref() }.map_or(0, super::arena::Arena::capacity)
+    guarded(0, || {
+        unsafe { arena.as_ref() }.map_or(0, super::arena::Arena::capacity)
+    })
 }
 
 /// Arena残容量（バイト）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_remaining(arena: *const Arena) -> usize {
-    unsafe { arena.as_ref() }.map_or(0, super::arena::Arena::remaining)
+    guarded(0, || {
+        unsafe { arena.as_ref() }.map_or(0, super::arena::Arena::remaining)
+    })
 }
 
 /// Arenaからf32配列を確保。失敗時はnullを返す。
 /// 返されたポインタはArenaのリセット・解放後は無効。
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_alloc_f32(arena: *mut Arena, count: usize) -> *mut f32 {
-    let Some(a) = (unsafe { arena.as_mut() }) else {
-        return core::ptr::null_mut();
-    };
-    a.alloc::<f32>(count)
-        .map_or(core::ptr::null_mut(), <[f32]>::as_mut_ptr)
+    guarded(core::ptr::null_mut(), || {
+        let Some(a) = (unsafe { arena.as_mut() }) else {
+            return core::ptr::null_mut();
+        };
+        a.alloc::<f32>(count)
+            .map_or(core::ptr::null_mut(), <[f32]>::as_mut_ptr)
+    })
 }
 
 // ============================================================================
@@ -92,56 +177,72 @@ pub unsafe extern "C" fn am_ml_weight_from_ternary(
     out_features: usize,
     in_features: usize,
 ) -> *mut TernaryWeight {
-    if values.is_null() || len == 0 {
-        return core::ptr::null_mut();
-    }
-    let slice = unsafe { core::slice::from_raw_parts(values, len) };
-    let w = TernaryWeight::from_ternary(slice, out_features, in_features);
-    Box::into_raw(Box::new(w))
+    guarded(core::ptr::null_mut(), || {
+        if values.is_null() || len == 0 {
+            return core::ptr::null_mut();
+        }
+        let slice = unsafe { core::slice::from_raw_parts(values, len) };
+        let w = TernaryWeight::from_ternary(slice, out_features, in_features);
+        Box::into_raw(Box::new(w))
+    })
 }
 
 /// `TernaryWeightを解放`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_free(w: *mut TernaryWeight) {
-    if !w.is_null() {
-        drop(unsafe { Box::from_raw(w) });
-    }
+    guarded((), || {
+        if !w.is_null() {
+            drop(unsafe { Box::from_raw(w) });
+        }
+    });
 }
 
 /// 出力特徴数
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_out_features(w: *const TernaryWeight) -> usize {
-    unsafe { w.as_ref() }.map_or(0, super::ops::TernaryWeight::out_features)
+    guarded(0, || {
+        unsafe { w.as_ref() }.map_or(0, super::ops::TernaryWeight::out_features)
+    })
 }
 
 /// 入力特徴数
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_in_features(w: *const TernaryWeight) -> usize {
-    unsafe { w.as_ref() }.map_or(0, super::ops::TernaryWeight::in_features)
+    guarded(0, || {
+        unsafe { w.as_ref() }.map_or(0, super::ops::TernaryWeight::in_features)
+    })
 }
 
 /// スケール係数
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_scale(w: *const TernaryWeight) -> f32 {
-    unsafe { w.as_ref() }.map_or(0.0, super::ops::TernaryWeight::scale)
+    guarded(0.0, || {
+        unsafe { w.as_ref() }.map_or(0.0, super::ops::TernaryWeight::scale)
+    })
 }
 
 /// VRAM使用量（バイト）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_memory_bytes(w: *const TernaryWeight) -> usize {
-    unsafe { w.as_ref() }.map_or(0, super::ops::TernaryWeight::memory_bytes)
+    guarded(0, || {
+        unsafe { w.as_ref() }.map_or(0, super::ops::TernaryWeight::memory_bytes)
+    })
 }
 
 /// FP32比の圧縮率
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_compression_ratio(w: *const TernaryWeight) -> f32 {
-    unsafe { w.as_ref() }.map_or(0.0, super::ops::TernaryWeight::compression_ratio)
+    guarded(0.0, || {
+        unsafe { w.as_ref() }.map_or(0.0, super::ops::TernaryWeight::compression_ratio)
+    })
 }
 
 /// 指定位置の重みを取得（i8: -1, 0, +1）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_get(w: *const TernaryWeight, row: usize, col: usize) -> i8 {
-    unsafe { w.as_ref() }.map_or(0, |w| w.get(row, col).to_i8())
+    guarded(0, || {
+        unsafe { w.as_ref() }.map_or(0, |w| w.get(row, col).to_i8())
+    })
 }
 
 // ============================================================================
@@ -156,12 +257,14 @@ pub unsafe extern "C" fn am_ml_kernel_from_ternary(
     out_features: usize,
     in_features: usize,
 ) -> *mut TernaryWeightKernel {
-    if values.is_null() || len == 0 {
-        return core::ptr::null_mut();
-    }
-    let slice = unsafe { core::slice::from_raw_parts(values, len) };
-    let k = TernaryWeightKernel::from_ternary(slice, out_features, in_features);
-    Box::into_raw(Box::new(k))
+    guarded(core::ptr::null_mut(), || {
+        if values.is_null() || len == 0 {
+            return core::ptr::null_mut();
+        }
+        let slice = unsafe { core::slice::from_raw_parts(values, len) };
+        let k = TernaryWeightKernel::from_ternary(slice, out_features, in_features);
+        Box::into_raw(Box::new(k))
+    })
 }
 
 /// スケール付きビットパラレル重みを作成
@@ -173,12 +276,14 @@ pub unsafe extern "C" fn am_ml_kernel_from_ternary_scaled(
     in_features: usize,
     scale: f32,
 ) -> *mut TernaryWeightKernel {
-    if values.is_null() || len == 0 {
-        return core::ptr::null_mut();
-    }
-    let slice = unsafe { core::slice::from_raw_parts(values, len) };
-    let k = TernaryWeightKernel::from_ternary_scaled(slice, out_features, in_features, scale);
-    Box::into_raw(Box::new(k))
+    guarded(core::ptr::null_mut(), || {
+        if values.is_null() || len == 0 {
+            return core::ptr::null_mut();
+        }
+        let slice = unsafe { core::slice::from_raw_parts(values, len) };
+        let k = TernaryWeightKernel::from_ternary_scaled(slice, out_features, in_features, scale);
+        Box::into_raw(Box::new(k))
+    })
 }
 
 /// `TernaryWeightからビットパラレル形式に変換`
@@ -186,49 +291,63 @@ pub unsafe extern "C" fn am_ml_kernel_from_ternary_scaled(
 pub unsafe extern "C" fn am_ml_kernel_from_weight(
     w: *const TernaryWeight,
 ) -> *mut TernaryWeightKernel {
-    let Some(w) = (unsafe { w.as_ref() }) else {
-        return core::ptr::null_mut();
-    };
-    let k = TernaryWeightKernel::from_packed_weight(w);
-    Box::into_raw(Box::new(k))
+    guarded(core::ptr::null_mut(), || {
+        let Some(w) = (unsafe { w.as_ref() }) else {
+            return core::ptr::null_mut();
+        };
+        let k = TernaryWeightKernel::from_packed_weight(w);
+        Box::into_raw(Box::new(k))
+    })
 }
 
 /// `TernaryWeightKernelを解放`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_free(k: *mut TernaryWeightKernel) {
-    if !k.is_null() {
-        drop(unsafe { Box::from_raw(k) });
-    }
+    guarded((), || {
+        if !k.is_null() {
+            drop(unsafe { Box::from_raw(k) });
+        }
+    });
 }
 
 /// 出力特徴数
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_out_features(k: *const TernaryWeightKernel) -> usize {
-    unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::out_features)
+    guarded(0, || {
+        unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::out_features)
+    })
 }
 
 /// 入力特徴数
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_in_features(k: *const TernaryWeightKernel) -> usize {
-    unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::in_features)
+    guarded(0, || {
+        unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::in_features)
+    })
 }
 
 /// メモリ使用量（バイト）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_memory_bytes(k: *const TernaryWeightKernel) -> usize {
-    unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::memory_bytes)
+    guarded(0, || {
+        unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::memory_bytes)
+    })
 }
 
 /// FP32比の圧縮率
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_compression_ratio(k: *const TernaryWeightKernel) -> f32 {
-    unsafe { k.as_ref() }.map_or(0.0, super::ops::TernaryWeightKernel::compression_ratio)
+    guarded(0.0, || {
+        unsafe { k.as_ref() }.map_or(0.0, super::ops::TernaryWeightKernel::compression_ratio)
+    })
 }
 
 /// 行あたりのu32ワード数
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_words_per_row(k: *const TernaryWeightKernel) -> usize {
-    unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::words_per_row)
+    guarded(0, || {
+        unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::words_per_row)
+    })
 }
 
 // ============================================================================
@@ -245,16 +364,18 @@ pub unsafe extern "C" fn am_ml_matvec(
     output: *mut f32,
     out_len: usize,
 ) {
-    let (Some(w), false, false) = (
-        unsafe { weights.as_ref() },
-        input.is_null(),
-        output.is_null(),
-    ) else {
-        return;
-    };
-    let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
-    let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
-    ternary_matvec(inp, w, out);
+    guarded((), || {
+        let (Some(w), false, false) = (
+            unsafe { weights.as_ref() },
+            input.is_null(),
+            output.is_null(),
+        ) else {
+            return;
+        };
+        let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
+        ternary_matvec(inp, w, out);
+    });
 }
 
 /// 三値行列-ベクトル積（ビットパラレルカーネル版）
@@ -266,16 +387,18 @@ pub unsafe extern "C" fn am_ml_matvec_kernel(
     output: *mut f32,
     out_len: usize,
 ) {
-    let (Some(k), false, false) = (
-        unsafe { kernel.as_ref() },
-        input.is_null(),
-        output.is_null(),
-    ) else {
-        return;
-    };
-    let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
-    let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
-    ternary_matvec_kernel(inp, k, out);
+    guarded((), || {
+        let (Some(k), false, false) = (
+            unsafe { kernel.as_ref() },
+            input.is_null(),
+            output.is_null(),
+        ) else {
+            return;
+        };
+        let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
+        ternary_matvec_kernel(inp, k, out);
+    });
 }
 
 /// バッチ行列乗算（パック重み版）
@@ -289,16 +412,18 @@ pub unsafe extern "C" fn am_ml_matmul_batch(
     out_len: usize,
     batch_size: usize,
 ) {
-    let (Some(w), false, false) = (
-        unsafe { weights.as_ref() },
-        input.is_null(),
-        output.is_null(),
-    ) else {
-        return;
-    };
-    let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
-    let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
-    ternary_matmul_batch(inp, w, out, batch_size);
+    guarded((), || {
+        let (Some(w), false, false) = (
+            unsafe { weights.as_ref() },
+            input.is_null(),
+            output.is_null(),
+        ) else {
+            return;
+        };
+        let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
+        ternary_matmul_batch(inp, w, out, batch_size);
+    });
 }
 
 /// SIMD自動ディスパッチ（AVX2/NEON/スカラー）
@@ -310,16 +435,18 @@ pub unsafe extern "C" fn am_ml_matvec_simd(
     output: *mut f32,
     out_len: usize,
 ) {
-    let (Some(k), false, false) = (
-        unsafe { kernel.as_ref() },
-        input.is_null(),
-        output.is_null(),
-    ) else {
-        return;
-    };
-    let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
-    let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
-    ternary_matvec_simd_dispatch(inp, k, out);
+    guarded((), || {
+        let (Some(k), false, false) = (
+            unsafe { kernel.as_ref() },
+            input.is_null(),
+            output.is_null(),
+        ) else {
+            return;
+        };
+        let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
+        ternary_matvec_simd_dispatch(inp, k, out);
+    });
 }
 
 // ============================================================================
@@ -329,140 +456,162 @@ pub unsafe extern "C" fn am_ml_matvec_simd(
 /// element-wise 加算: `out[i] = a[i] + b[i]`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_add(a: *const f32, b: *const f32, out: *mut f32, len: usize) {
-    if a.is_null() || b.is_null() || out.is_null() {
-        return;
-    }
-    let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    let sb = unsafe { core::slice::from_raw_parts(b, len) };
-    let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    for ((o, &av), &bv) in so.iter_mut().zip(sa.iter()).zip(sb.iter()) {
-        *o = av + bv;
-    }
+    guarded((), || {
+        if a.is_null() || b.is_null() || out.is_null() {
+            return;
+        }
+        let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        let sb = unsafe { core::slice::from_raw_parts(b, len) };
+        let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
+        for ((o, &av), &bv) in so.iter_mut().zip(sa.iter()).zip(sb.iter()) {
+            *o = av + bv;
+        }
+    });
 }
 
 /// element-wise 減算: `out[i] = a[i] - b[i]`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_sub(a: *const f32, b: *const f32, out: *mut f32, len: usize) {
-    if a.is_null() || b.is_null() || out.is_null() {
-        return;
-    }
-    let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    let sb = unsafe { core::slice::from_raw_parts(b, len) };
-    let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    for ((o, &av), &bv) in so.iter_mut().zip(sa.iter()).zip(sb.iter()) {
-        *o = av - bv;
-    }
+    guarded((), || {
+        if a.is_null() || b.is_null() || out.is_null() {
+            return;
+        }
+        let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        let sb = unsafe { core::slice::from_raw_parts(b, len) };
+        let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
+        for ((o, &av), &bv) in so.iter_mut().zip(sa.iter()).zip(sb.iter()) {
+            *o = av - bv;
+        }
+    });
 }
 
 /// スカラー乗算: `out[i] = a[i] * s`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_scale(a: *const f32, s: f32, out: *mut f32, len: usize) {
-    if a.is_null() || out.is_null() {
-        return;
-    }
-    let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    for (o, &av) in so.iter_mut().zip(sa.iter()) {
-        *o = av * s;
-    }
+    guarded((), || {
+        if a.is_null() || out.is_null() {
+            return;
+        }
+        let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
+        for (o, &av) in so.iter_mut().zip(sa.iter()) {
+            *o = av * s;
+        }
+    });
 }
 
 /// コピー: `out[i] = a[i]`
 #[no_mangle]
-pub const unsafe extern "C" fn am_ml_tensor_copy(a: *const f32, out: *mut f32, len: usize) {
-    if a.is_null() || out.is_null() {
-        return;
-    }
-    let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    so.copy_from_slice(sa);
+pub unsafe extern "C" fn am_ml_tensor_copy(a: *const f32, out: *mut f32, len: usize) {
+    guarded((), || {
+        if a.is_null() || out.is_null() {
+            return;
+        }
+        let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
+        so.copy_from_slice(sa);
+    });
 }
 
 /// 合計
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_sum(a: *const f32, len: usize) -> f32 {
-    if a.is_null() {
-        return 0.0;
-    }
-    let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    sa.iter().sum()
+    guarded(0.0, || {
+        if a.is_null() {
+            return 0.0;
+        }
+        let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        sa.iter().sum()
+    })
 }
 
 /// 平均
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_mean(a: *const f32, len: usize) -> f32 {
-    if a.is_null() || len == 0 {
-        return 0.0;
-    }
-    let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    sa.iter().sum::<f32>() / len as f32
+    guarded(0.0, || {
+        if a.is_null() || len == 0 {
+            return 0.0;
+        }
+        let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        sa.iter().sum::<f32>() / len as f32
+    })
 }
 
 /// 最小値
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_min(a: *const f32, len: usize) -> f32 {
-    if a.is_null() || len == 0 {
-        return 0.0;
-    }
-    let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    sa.iter().copied().fold(f32::INFINITY, f32::min)
+    guarded(0.0, || {
+        if a.is_null() || len == 0 {
+            return 0.0;
+        }
+        let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        sa.iter().copied().fold(f32::INFINITY, f32::min)
+    })
 }
 
 /// 最大値
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_max(a: *const f32, len: usize) -> f32 {
-    if a.is_null() || len == 0 {
-        return 0.0;
-    }
-    let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    sa.iter().copied().fold(f32::NEG_INFINITY, f32::max)
+    guarded(0.0, || {
+        if a.is_null() || len == 0 {
+            return 0.0;
+        }
+        let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        sa.iter().copied().fold(f32::NEG_INFINITY, f32::max)
+    })
 }
 
 /// `ReLU`: `out[i] = max(0, a[i])`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_relu(a: *const f32, out: *mut f32, len: usize) {
-    if a.is_null() || out.is_null() {
-        return;
-    }
-    let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    for (o, &av) in so.iter_mut().zip(sa.iter()) {
-        *o = av.max(0.0);
-    }
+    guarded((), || {
+        if a.is_null() || out.is_null() {
+            return;
+        }
+        let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
+        for (o, &av) in so.iter_mut().zip(sa.iter()) {
+            *o = av.max(0.0);
+        }
+    });
 }
 
 /// `ReLUインプレース`: `a[i] = max(0, a[i])`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_relu_inplace(a: *mut f32, len: usize) {
-    if a.is_null() {
-        return;
-    }
-    let sa = unsafe { core::slice::from_raw_parts_mut(a, len) };
-    for x in sa.iter_mut() {
-        *x = x.max(0.0);
-    }
+    guarded((), || {
+        if a.is_null() {
+            return;
+        }
+        let sa = unsafe { core::slice::from_raw_parts_mut(a, len) };
+        for x in sa.iter_mut() {
+            *x = x.max(0.0);
+        }
+    });
 }
 
 /// Softmax: out = softmax(a)
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_tensor_softmax(a: *const f32, out: *mut f32, len: usize) {
-    if a.is_null() || out.is_null() || len == 0 {
-        return;
-    }
-    let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    let max_val = sa.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    let mut sum = 0.0f32;
-    for (o, &x) in so.iter_mut().zip(sa.iter()) {
-        *o = (x - max_val).exp();
-        sum += *o;
-    }
-    if sum > 0.0 {
-        let inv = 1.0 / sum;
-        for o in so.iter_mut() {
-            *o *= inv;
+    guarded((), || {
+        if a.is_null() || out.is_null() || len == 0 {
+            return;
         }
-    }
+        let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
+        let max_val = sa.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let mut sum = 0.0f32;
+        for (o, &x) in so.iter_mut().zip(sa.iter()) {
+            *o = (x - max_val).exp();
+            sum += *o;
+        }
+        if sum > 0.0 {
+            let inv = 1.0 / sum;
+            for o in so.iter_mut() {
+                *o *= inv;
+            }
+        }
+    });
 }
 
 /// `RMSNorm`: out = x / sqrt(mean(x²) + eps)
@@ -473,19 +622,21 @@ pub unsafe extern "C" fn am_ml_tensor_rms_norm(
     out: *mut f32,
     len: usize,
 ) {
-    if a.is_null() || out.is_null() || len == 0 {
-        return;
-    }
-    let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    let mut sum_sq: f32 = 0.0;
-    for &x in sa {
-        sum_sq = x.mul_add(x, sum_sq);
-    }
-    let inv_rms = 1.0 / (sum_sq / len as f32 + epsilon).sqrt();
-    for (o, &x) in so.iter_mut().zip(sa.iter()) {
-        *o = x * inv_rms;
-    }
+    guarded((), || {
+        if a.is_null() || out.is_null() || len == 0 {
+            return;
+        }
+        let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
+        let mut sum_sq: f32 = 0.0;
+        for &x in sa {
+            sum_sq = x.mul_add(x, sum_sq);
+        }
+        let inv_rms = 1.0 / (sum_sq / len as f32 + epsilon).sqrt();
+        for (o, &x) in so.iter_mut().zip(sa.iter()) {
+            *o = x * inv_rms;
+        }
+    });
 }
 
 /// `LayerNorm`: out = (x - mean) / sqrt(var + eps)
@@ -496,21 +647,23 @@ pub unsafe extern "C" fn am_ml_tensor_layer_norm(
     out: *mut f32,
     len: usize,
 ) {
-    if a.is_null() || out.is_null() || len == 0 {
-        return;
-    }
-    let sa = unsafe { core::slice::from_raw_parts(a, len) };
-    let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-    let mean = sa.iter().sum::<f32>() / len as f32;
-    let mut var: f32 = 0.0;
-    for &x in sa {
-        let d = x - mean;
-        var = d.mul_add(d, var);
-    }
-    let inv_std = 1.0 / (var / len as f32 + epsilon).sqrt();
-    for (o, &x) in so.iter_mut().zip(sa.iter()) {
-        *o = (x - mean) * inv_std;
-    }
+    guarded((), || {
+        if a.is_null() || out.is_null() || len == 0 {
+            return;
+        }
+        let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
+        let mean = sa.iter().sum::<f32>() / len as f32;
+        let mut var: f32 = 0.0;
+        for &x in sa {
+            let d = x - mean;
+            var = d.mul_add(d, var);
+        }
+        let inv_std = 1.0 / (var / len as f32 + epsilon).sqrt();
+        for (o, &x) in so.iter_mut().zip(sa.iter()) {
+            *o = (x - mean) * inv_std;
+        }
+    });
 }
 
 // ============================================================================
@@ -528,25 +681,29 @@ pub unsafe extern "C" fn am_ml_bitlinear_new(
     bias_len: usize,
     pre_norm: c_int,
 ) -> *mut BitLinear {
-    if kernel.is_null() {
-        return core::ptr::null_mut();
-    }
-    let k = unsafe { *Box::from_raw(kernel) };
-    let b = if bias.is_null() || bias_len == 0 {
-        None
-    } else {
-        Some(unsafe { core::slice::from_raw_parts(bias, bias_len) }.to_vec())
-    };
-    let layer = BitLinear::new(k, b, pre_norm != 0);
-    Box::into_raw(Box::new(layer))
+    guarded(core::ptr::null_mut(), || {
+        if kernel.is_null() {
+            return core::ptr::null_mut();
+        }
+        let k = unsafe { *Box::from_raw(kernel) };
+        let b = if bias.is_null() || bias_len == 0 {
+            None
+        } else {
+            Some(unsafe { core::slice::from_raw_parts(bias, bias_len) }.to_vec())
+        };
+        let layer = BitLinear::new(k, b, pre_norm != 0);
+        Box::into_raw(Box::new(layer))
+    })
 }
 
 /// `BitLinearを解放`
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_bitlinear_free(layer: *mut BitLinear) {
-    if !layer.is_null() {
-        drop(unsafe { Box::from_raw(layer) });
-    }
+    guarded((), || {
+        if !layer.is_null() {
+            drop(unsafe { Box::from_raw(layer) });
+        }
+    });
 }
 
 /// フォワードパス（DPS）
@@ -558,25 +715,32 @@ pub unsafe extern "C" fn am_ml_bitlinear_forward(
     output: *mut f32,
     out_len: usize,
 ) {
-    let (Some(l), false, false) = (unsafe { layer.as_ref() }, input.is_null(), output.is_null())
-    else {
-        return;
-    };
-    let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
-    let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
-    l.forward(inp, out);
+    guarded((), || {
+        let (Some(l), false, false) =
+            (unsafe { layer.as_ref() }, input.is_null(), output.is_null())
+        else {
+            return;
+        };
+        let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
+        l.forward(inp, out);
+    });
 }
 
 /// レイヤーのメモリ使用量（バイト）
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_bitlinear_memory_bytes(layer: *const BitLinear) -> usize {
-    unsafe { layer.as_ref() }.map_or(0, super::layer::BitLinear::memory_bytes)
+    guarded(0, || {
+        unsafe { layer.as_ref() }.map_or(0, super::layer::BitLinear::memory_bytes)
+    })
 }
 
 /// FP32比の圧縮率
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_bitlinear_compression_ratio(layer: *const BitLinear) -> f32 {
-    unsafe { layer.as_ref() }.map_or(0.0, super::layer::BitLinear::compression_ratio)
+    guarded(0.0, || {
+        unsafe { layer.as_ref() }.map_or(0.0, super::layer::BitLinear::compression_ratio)
+    })
 }
 
 // ============================================================================
@@ -592,12 +756,14 @@ pub unsafe extern "C" fn am_ml_quantize(
     out_features: usize,
     in_features: usize,
 ) -> *mut TernaryWeight {
-    if weights.is_null() || len == 0 {
-        return core::ptr::null_mut();
-    }
-    let slice = unsafe { core::slice::from_raw_parts(weights, len) };
-    let (tw, _stats) = quantize_to_ternary(slice, out_features, in_features);
-    Box::into_raw(Box::new(tw))
+    guarded(core::ptr::null_mut(), || {
+        if weights.is_null() || len == 0 {
+            return core::ptr::null_mut();
+        }
+        let slice = unsafe { core::slice::from_raw_parts(weights, len) };
+        let (tw, _stats) = quantize_to_ternary(slice, out_features, in_features);
+        Box::into_raw(Box::new(tw))
+    })
 }
 
 /// 三値重みをFP32に逆量子化
@@ -608,17 +774,19 @@ pub unsafe extern "C" fn am_ml_dequantize(
     out: *mut f32,
     max_len: usize,
 ) -> usize {
-    let Some(w) = (unsafe { w.as_ref() }) else {
-        return 0;
-    };
-    if out.is_null() {
-        return 0;
-    }
-    let deq = dequantize_from_ternary(w);
-    let n = deq.len().min(max_len);
-    let dst = unsafe { core::slice::from_raw_parts_mut(out, n) };
-    dst.copy_from_slice(&deq[..n]);
-    n
+    guarded(0, || {
+        let Some(w) = (unsafe { w.as_ref() }) else {
+            return 0;
+        };
+        if out.is_null() {
+            return 0;
+        }
+        let deq = dequantize_from_ternary(w);
+        let n = deq.len().min(max_len);
+        let dst = unsafe { core::slice::from_raw_parts_mut(out, n) };
+        dst.copy_from_slice(&deq[..n]);
+        n
+    })
 }
 
 /// 量子化誤差（MAE）
@@ -628,12 +796,14 @@ pub unsafe extern "C" fn am_ml_quantization_error_mae(
     len: usize,
     quantized: *const TernaryWeight,
 ) -> f32 {
-    let (Some(q), false) = (unsafe { quantized.as_ref() }, original.is_null()) else {
-        return -1.0;
-    };
-    let orig = unsafe { core::slice::from_raw_parts(original, len) };
-    let err = compute_quantization_error(orig, q);
-    err.mae
+    guarded(0.0, || {
+        let (Some(q), false) = (unsafe { quantized.as_ref() }, original.is_null()) else {
+            return -1.0;
+        };
+        let orig = unsafe { core::slice::from_raw_parts(original, len) };
+        let err = compute_quantization_error(orig, q);
+        err.mae
+    })
 }
 
 /// 量子化誤差（SNR dB）
@@ -643,12 +813,14 @@ pub unsafe extern "C" fn am_ml_quantization_error_snr(
     len: usize,
     quantized: *const TernaryWeight,
 ) -> f32 {
-    let (Some(q), false) = (unsafe { quantized.as_ref() }, original.is_null()) else {
-        return -1.0;
-    };
-    let orig = unsafe { core::slice::from_raw_parts(original, len) };
-    let err = compute_quantization_error(orig, q);
-    err.snr
+    guarded(0.0, || {
+        let (Some(q), false) = (unsafe { quantized.as_ref() }, original.is_null()) else {
+            return -1.0;
+        };
+        let orig = unsafe { core::slice::from_raw_parts(original, len) };
+        let err = compute_quantization_error(orig, q);
+        err.snr
+    })
 }
 
 // ============================================================================
@@ -669,26 +841,30 @@ pub unsafe extern "C" fn am_ml_micro_model_build_random(
     budget_bytes: usize,
     seed: u64,
 ) -> *mut MicroModel {
-    let mut builder = MicroModelBuilder::new(
-        in_features,
-        out_features,
-        CacheBudget::custom(budget_bytes, "ffi"),
-    );
-    if !hidden_dims.is_null() && hidden_count > 0 {
-        let dims = unsafe { core::slice::from_raw_parts(hidden_dims, hidden_count) };
-        for &d in dims {
-            builder = builder.add_hidden(d);
+    guarded(core::ptr::null_mut(), || {
+        let mut builder = MicroModelBuilder::new(
+            in_features,
+            out_features,
+            CacheBudget::custom(budget_bytes, "ffi"),
+        );
+        if !hidden_dims.is_null() && hidden_count > 0 {
+            let dims = unsafe { core::slice::from_raw_parts(hidden_dims, hidden_count) };
+            for &d in dims {
+                builder = builder.add_hidden(d);
+            }
         }
-    }
-    Box::into_raw(Box::new(builder.build_random(seed)))
+        Box::into_raw(Box::new(builder.build_random(seed)))
+    })
 }
 
 /// `MicroModel` を解放。
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_micro_model_free(model: *mut MicroModel) {
-    if !model.is_null() {
-        drop(unsafe { Box::from_raw(model) });
-    }
+    guarded((), || {
+        if !model.is_null() {
+            drop(unsafe { Box::from_raw(model) });
+        }
+    });
 }
 
 /// 推論 (DPS)。
@@ -700,13 +876,16 @@ pub unsafe extern "C" fn am_ml_micro_model_forward(
     output: *mut f32,
     out_len: usize,
 ) {
-    let (Some(m), false, false) = (unsafe { model.as_ref() }, input.is_null(), output.is_null())
-    else {
-        return;
-    };
-    let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
-    let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
-    m.forward(inp, out);
+    guarded((), || {
+        let (Some(m), false, false) =
+            (unsafe { model.as_ref() }, input.is_null(), output.is_null())
+        else {
+            return;
+        };
+        let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
+        m.forward(inp, out);
+    });
 }
 
 /// K ステップ自己回帰推論 (DPS)。
@@ -719,40 +898,48 @@ pub unsafe extern "C" fn am_ml_micro_model_predict_tokens(
     logits_len: usize,
     steps: usize,
 ) -> usize {
-    let (Some(m), false, false) = (
-        unsafe { model.as_ref() },
-        input.is_null(),
-        token_logits.is_null(),
-    ) else {
-        return 0;
-    };
-    let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
-    let out = unsafe { core::slice::from_raw_parts_mut(token_logits, logits_len) };
-    m.predict_tokens(inp, out, steps)
+    guarded(0, || {
+        let (Some(m), false, false) = (
+            unsafe { model.as_ref() },
+            input.is_null(),
+            token_logits.is_null(),
+        ) else {
+            return 0;
+        };
+        let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        let out = unsafe { core::slice::from_raw_parts_mut(token_logits, logits_len) };
+        m.predict_tokens(inp, out, steps)
+    })
 }
 
 /// メモリ使用量 (bytes)。
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_micro_model_memory_bytes(model: *const MicroModel) -> usize {
-    unsafe { model.as_ref() }.map_or(0, MicroModel::memory_bytes)
+    guarded(0, || {
+        unsafe { model.as_ref() }.map_or(0, MicroModel::memory_bytes)
+    })
 }
 
 /// 予算内に収まっているか。
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_micro_model_fits_in_budget(model: *const MicroModel) -> c_int {
-    unsafe { model.as_ref() }.map_or(0, |m| c_int::from(m.fits_in_budget()))
+    guarded(-1, || {
+        unsafe { model.as_ref() }.map_or(0, |m| c_int::from(m.fits_in_budget()))
+    })
 }
 
 /// パラメータ数。
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_micro_model_param_count(model: *const MicroModel) -> usize {
-    unsafe { model.as_ref() }.map_or(0, MicroModel::param_count)
+    guarded(0, || {
+        unsafe { model.as_ref() }.map_or(0, MicroModel::param_count)
+    })
 }
 
 /// レイヤー数。
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_micro_model_depth(model: *const MicroModel) -> usize {
-    unsafe { model.as_ref() }.map_or(0, MicroModel::depth)
+    guarded(0, || unsafe { model.as_ref() }.map_or(0, MicroModel::depth))
 }
 
 // ============================================================================
@@ -770,29 +957,33 @@ pub unsafe extern "C" fn am_ml_cache_decoder_new(
     verify_kernel: *mut TernaryWeightKernel,
     max_draft_tokens: usize,
 ) -> *mut CacheResidentDecoder {
-    if draft.is_null() || verify_kernel.is_null() {
-        return core::ptr::null_mut();
-    }
-    let d = unsafe { *Box::from_raw(draft) };
-    let vk = unsafe { *Box::from_raw(verify_kernel) };
-    let v_layer = BitLinear::new(vk, None, false);
-    let config = DecoderConfig {
-        max_draft_tokens,
-        temperature: 1.0,
-    };
-    Box::into_raw(Box::new(CacheResidentDecoder::new(
-        d,
-        vec![v_layer],
-        config,
-    )))
+    guarded(core::ptr::null_mut(), || {
+        if draft.is_null() || verify_kernel.is_null() {
+            return core::ptr::null_mut();
+        }
+        let d = unsafe { *Box::from_raw(draft) };
+        let vk = unsafe { *Box::from_raw(verify_kernel) };
+        let v_layer = BitLinear::new(vk, None, false);
+        let config = DecoderConfig {
+            max_draft_tokens,
+            temperature: 1.0,
+        };
+        Box::into_raw(Box::new(CacheResidentDecoder::new(
+            d,
+            vec![v_layer],
+            config,
+        )))
+    })
 }
 
 /// `CacheResidentDecoder` を解放。
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_cache_decoder_free(decoder: *mut CacheResidentDecoder) {
-    if !decoder.is_null() {
-        drop(unsafe { Box::from_raw(decoder) });
-    }
+    guarded((), || {
+        if !decoder.is_null() {
+            drop(unsafe { Box::from_raw(decoder) });
+        }
+    });
 }
 
 /// 1デコードステップ: L2ドラフト → DRAM検証 → 受理判定。
@@ -807,19 +998,21 @@ pub unsafe extern "C" fn am_ml_cache_decoder_step(
     verify_buf: *mut f32,
     verify_len: usize,
 ) -> usize {
-    let (Some(dec), false, false, false) = (
-        unsafe { decoder.as_ref() },
-        input.is_null(),
-        draft_buf.is_null(),
-        verify_buf.is_null(),
-    ) else {
-        return 0;
-    };
-    let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
-    let dbuf = unsafe { core::slice::from_raw_parts_mut(draft_buf, draft_len) };
-    let vbuf = unsafe { core::slice::from_raw_parts_mut(verify_buf, verify_len) };
-    let result = dec.decode_step(inp, dbuf, vbuf);
-    result.accepted
+    guarded(0, || {
+        let (Some(dec), false, false, false) = (
+            unsafe { decoder.as_ref() },
+            input.is_null(),
+            draft_buf.is_null(),
+            verify_buf.is_null(),
+        ) else {
+            return 0;
+        };
+        let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        let dbuf = unsafe { core::slice::from_raw_parts_mut(draft_buf, draft_len) };
+        let vbuf = unsafe { core::slice::from_raw_parts_mut(verify_buf, verify_len) };
+        let result = dec.decode_step(inp, dbuf, vbuf);
+        result.accepted
+    })
 }
 
 /// ドラフトモデルがキャッシュ予算内か。
@@ -827,7 +1020,9 @@ pub unsafe extern "C" fn am_ml_cache_decoder_step(
 pub unsafe extern "C" fn am_ml_cache_decoder_fits_in_cache(
     decoder: *const CacheResidentDecoder,
 ) -> c_int {
-    unsafe { decoder.as_ref() }.map_or(0, |d| c_int::from(d.draft_fits_in_cache()))
+    guarded(-1, || {
+        unsafe { decoder.as_ref() }.map_or(0, |d| c_int::from(d.draft_fits_in_cache()))
+    })
 }
 
 /// ドラフトモデルのメモリ使用量 (bytes)。
@@ -835,7 +1030,9 @@ pub unsafe extern "C" fn am_ml_cache_decoder_fits_in_cache(
 pub unsafe extern "C" fn am_ml_cache_decoder_draft_memory(
     decoder: *const CacheResidentDecoder,
 ) -> usize {
-    unsafe { decoder.as_ref() }.map_or(0, CacheResidentDecoder::draft_memory_bytes)
+    guarded(0, || {
+        unsafe { decoder.as_ref() }.map_or(0, CacheResidentDecoder::draft_memory_bytes)
+    })
 }
 
 /// 検証モデルのメモリ使用量 (bytes)。
@@ -843,7 +1040,9 @@ pub unsafe extern "C" fn am_ml_cache_decoder_draft_memory(
 pub unsafe extern "C" fn am_ml_cache_decoder_verify_memory(
     decoder: *const CacheResidentDecoder,
 ) -> usize {
-    unsafe { decoder.as_ref() }.map_or(0, CacheResidentDecoder::verify_memory_bytes)
+    guarded(0, || {
+        unsafe { decoder.as_ref() }.map_or(0, CacheResidentDecoder::verify_memory_bytes)
+    })
 }
 
 // ============================================================================
@@ -856,10 +1055,12 @@ pub unsafe extern "C" fn am_ml_cache_decoder_verify_memory(
 /// `VERSION` に null バイトが含まれている場合（通常ありえない）。
 #[no_mangle]
 pub extern "C" fn am_ml_version() -> *const c_char {
-    static VERSION_C: OnceLock<std::ffi::CString> = OnceLock::new();
-    VERSION_C
-        .get_or_init(|| std::ffi::CString::new(crate::VERSION).unwrap())
-        .as_ptr()
+    guarded(core::ptr::null(), || {
+        static VERSION_C: OnceLock<std::ffi::CString> = OnceLock::new();
+        VERSION_C
+            .get_or_init(|| std::ffi::CString::new(crate::VERSION).unwrap())
+            .as_ptr()
+    })
 }
 
 // ============================================================================
@@ -876,6 +1077,38 @@ mod tests {
         assert!(!v.is_null());
         let s = unsafe { std::ffi::CStr::from_ptr(v) }.to_str().unwrap();
         assert!(s.starts_with("0."));
+    }
+
+    #[test]
+    fn panic_inside_entry_point_becomes_sentinel_and_last_error() {
+        am_ml_clear_last_error();
+        assert!(am_ml_last_error().is_null());
+        // 4 values but 3 × 3 = 9 features: `TernaryWeight::from_ternary` panics
+        // (assert_eq on the length); the C caller must get null, not an abort
+        let values: [i8; 4] = [1, -1, 0, 1];
+        let w = unsafe { am_ml_weight_from_ternary(values.as_ptr(), 4, 3, 3) };
+        assert!(w.is_null());
+        let msg = am_ml_last_error();
+        assert!(!msg.is_null());
+        let s = unsafe { std::ffi::CStr::from_ptr(msg) }.to_str().unwrap();
+        assert!(s.starts_with("internal panic: "), "{s}");
+        // a later successful call leaves the message in place until cleared
+        let ok = unsafe { am_ml_weight_from_ternary(values.as_ptr(), 4, 2, 2) };
+        assert!(!ok.is_null());
+        assert!(!am_ml_last_error().is_null());
+        unsafe { am_ml_weight_free(ok) };
+        am_ml_clear_last_error();
+        assert!(am_ml_last_error().is_null());
+    }
+
+    #[test]
+    fn set_last_error_replaces_interior_nul() {
+        set_last_error("a\0b");
+        let s = unsafe { std::ffi::CStr::from_ptr(am_ml_last_error()) }
+            .to_str()
+            .unwrap();
+        assert_eq!(s, "a?b");
+        am_ml_clear_last_error();
     }
 
     #[test]

@@ -101,6 +101,12 @@ extern "C"
 
     // ---- Version (1) ----
     const char* am_ml_version();
+
+    // ---- Error reporting (2) ----
+    // Every entry point catches Rust panics and returns its sentinel
+    // (null / 0 / -1); the message is available here until cleared
+    const char* am_ml_last_error();
+    void        am_ml_clear_last_error();
 }
 
 // ============================================================================
@@ -217,6 +223,19 @@ inline CacheDecoderPtr MakeCacheDecoder(MicroModelPtr& draft, KernelPtr& verify_
 inline std::string Version()
 {
     return std::string(am_ml_version());
+}
+
+/// Message of the last Rust panic caught at the FFI boundary on this thread
+/// (empty when none)
+inline std::string LastError()
+{
+    const char* msg = am_ml_last_error();
+    return msg ? std::string(msg) : std::string();
+}
+
+inline void ClearLastError()
+{
+    am_ml_clear_last_error();
 }
 
 } // namespace AliceMl

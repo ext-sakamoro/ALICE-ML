@@ -100,6 +100,10 @@ namespace Alice.ML
 
         // ---- Version (1) ----
         [DllImport(DLL)] internal static extern IntPtr am_ml_version();
+
+        // ---- Error reporting (2) ----
+        [DllImport(DLL)] internal static extern IntPtr am_ml_last_error();
+        [DllImport(DLL)] internal static extern void am_ml_clear_last_error();
     }
 
     // ========================================================================
@@ -306,9 +310,23 @@ namespace Alice.ML
         public static void LayerNorm(float[] a, float epsilon, float[] output) => Native.am_ml_tensor_layer_norm(a, epsilon, output, (UIntPtr)a.Length);
     }
 
-    /// Version info
+    /// Version info / error reporting
     public static class AliceMl
     {
         public static string Version => Marshal.PtrToStringAnsi(Native.am_ml_version());
+
+        /// Message of the last Rust panic caught at the FFI boundary on this
+        /// thread (every native call returns its sentinel instead of crashing
+        /// the editor), or null when none
+        public static string LastError
+        {
+            get
+            {
+                var p = Native.am_ml_last_error();
+                return p == IntPtr.Zero ? null : Marshal.PtrToStringAnsi(p);
+            }
+        }
+
+        public static void ClearLastError() => Native.am_ml_clear_last_error();
     }
 }

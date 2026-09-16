@@ -143,7 +143,7 @@ println!("MAE: {}", stats.mae);
 - `speculative.rs` - Speculative Decoding (draft lookahead + verification + L2-resident decoder)
 - `streaming.rs` - Weight Streaming (on-demand layer loading with LRU eviction)
 - `neon.rs` - ARM NEON 4-wide SIMD (feature: `neon`)
-- `ffi.rs` - C-ABI FFI 65 functions (feature: `ffi`)
+- `ffi.rs` - C-ABI FFI 67 functions, panic-isolated (feature: `ffi`)
 - `python.rs` - PyO3 + NumPy bindings (feature: `pyo3`)
 - `db_bridge.rs` - ALICE-DB training metrics (feature: `db`)
 - `safetensors.rs` - Safetensors format parser with BF16/FP16/F32 conversion (feature: `safetensors`)
@@ -214,7 +214,7 @@ alice-ml = { path = "../ALICE-ML" }
 | Feature | Default | Description |
 |---------|---------|-------------|
 | `std` | Yes | Standard library support |
-| `ffi` | No | C-ABI FFI (51 extern "C" functions) |
+| `ffi` | No | C-ABI FFI (67 extern "C" functions) |
 | `simd` | No | AVX2 8-wide SIMD kernels (tensor ops + ternary MatVec) |
 | `neon` | No | ARM NEON 4-wide SIMD kernels (aarch64) |
 | `parallel` | No | Rayon parallel batch MatMul |
@@ -278,7 +278,7 @@ let losses = sink.query_loss(0, 1000)?;
 
 ### C-ABI FFI (`--features ffi`)
 
-65 `extern "C"` functions with `am_ml_*` prefix:
+67 `extern "C"` functions with `am_ml_*` prefix Every entry point runs inside `catch_unwind`: a Rust panic (bad dimensions, allocation failure) returns the function's sentinel (null / 0 / -1) and the message is readable from `am_ml_last_error()` until `am_ml_clear_last_error()`; the host process (Unity / UE5 / C) is never aborted
 
 | Category | Functions | Description |
 |----------|----------|-------------|
@@ -292,10 +292,11 @@ let losses = sink.query_loss(0, 1000)?;
 | MicroModel | 8 | L2 cache-resident micro model |
 | CacheResidentDecoder | 6 | L2 draft + DRAM verify decoder |
 | Version | 1 | Library version |
+| Error reporting | 2 | `am_ml_last_error` / `am_ml_clear_last_error` |
 
 ### Unity C# (`bindings/unity/AliceMl.cs`)
 
-65 DllImport + 9 RAII IDisposable handles (ArenaHandle, TernaryWeightHandle, TernaryKernelHandle, BitLinearHandle, QuantizedHandle, MicroModelHandle, CacheDecoderHandle) + TensorOps static class.
+67 DllImport + 9 RAII IDisposable handles (ArenaHandle, TernaryWeightHandle, TernaryKernelHandle, BitLinearHandle, QuantizedHandle, MicroModelHandle, CacheDecoderHandle) + TensorOps static class.
 
 ### UE5 C++ (`bindings/ue5/AliceMl.h`)
 

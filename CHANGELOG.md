@@ -9,7 +9,11 @@ All notable changes to ALICE-ML will be documented in this file.
 - feature-gated module (`ffi` / `safetensors` / `llama3_ternary`) の clippy pedantic / nursery 38 件と rustdoc 未解決 link 2 件 (CI が `--features simd` のみで未 lint だった)
 - `elyza_ternary` / `qwen_qat_test` example に `required-features = ["safetensors"]` (default build で unresolved import)
 
+### Added
+- `ffi`: 全 65 `extern "C"` 関数の本体を `catch_unwind` (`guarded`) で囲み、Rust panic を host process の abort ではなく sentinel 戻り値 (null / 0 / 0.0 / -1) にする `am_ml_last_error()` で thread-local の message (NUL 終端) を取得、`am_ml_clear_last_error()` で消去 UE5 / Unity / C から呼ぶ時に一つの bad input で editor が落ちない
+
 ### Changed
+- release profile の `panic = "abort"` を除去 (`catch_unwind` を無効化するため、理由は `Cargo.toml` の comment)
 - `libm = "0.2"` を依存に追加 (`no_std` build のみ使用) `no_std` 時の `exp` / `sqrt` 等は platform libm と最終 ulp で異なりうる (ternary matvec の bit-exact 性は不変、`src/math.rs` doc 参照)
 - CI: clippy を `--all-targets` + full native feature set (`ffi,simd,parallel,safetensors`) で `-D warnings`、`no_std` job (host + thumbv7em + clippy-driver wrapper)、`feature-powerset` job (cargo-hack、std 固定 depth 2)、test / doc も full native feature set を追加、rust-cache
 

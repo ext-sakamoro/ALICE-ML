@@ -57,7 +57,10 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = true
-panic = "abort"
+# `panic = "unwind"` (default) on purpose: every `extern "C"` entry point in
+# src/ffi.rs runs inside `catch_unwind` (`guarded`) so a Rust panic becomes a
+# sentinel + `am_ml_last_error` instead of aborting the host process;
+# `panic = "abort"` would make that guard a no-op.
 
 [profile.bench]
 opt-level = 3
