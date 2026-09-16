@@ -1271,3 +1271,146 @@ mod safetensors_format {
         assert!(SafetensorsFile::parse(&file("{\"y\":{\"dtype\":\"F32\"", &[])).is_none());
     }
 }
+
+// ----------------------------------------------------------------------------
+// Training primitives: losses against their definitions (value and gradient),
+// SGD / Adam against the textbook update on a scalar problem
+// ----------------------------------------------------------------------------
+
+mod training_laws {
+    use alice_ml::training::{
+        cross_entropy_loss, mae_loss, mse_loss, AdamConfig, AdamState, SgdConfig, SgdState,
+    };
+
+    #[test]
+    fn mse_mae_and_cross_entropy_match_their_definitions() {
+        let p = [1.0f32, -2.0, 0.5, 4.0];
+        let t = [0.0f32, -1.0, 0.5, 1.0];
+        let n = p.len() as f32;
+        let mut g = [0.0f32; 4];
+
+        let mse = mse_loss(&p, &t, &mut g);
+        let diffs: Vec<f32> = p.iter().zip(&t).map(|(a, b)| a - b).collect();
+        assert_eq!(mse.value, diffs.iter().map(|d| d * d).sum::<f32>() / n);
+        for i in 0..4 {
+            assert_eq!(g[i], 2.0 * diffs[i] / n, "mse grad {i}");
+        }
+
+        let mae = mae_loss(&p, &t, &mut g);
+        assert_eq!(mae.value, diffs.iter().map(|d| d.abs()).sum::<f32>() / n);
+        // sub-gradient: sign(diff) / n, exactly 0 on a tie
+        assert_eq!(g, [0.25, -0.25, 0.0, 0.25]);
+
+        // cross entropy with a one-hot target = −log softmax(logits)[target]
+        let logits = [2.0f32, 0.5, -1.0, 3.0];
+        let target = [0.0f32, 0.0, 0.0, 1.0];
+        let ce = cross_entropy_loss(&logits, &target, &mut g);
+        let max = 3.0f32;
+        let z: f32 = logits.iter().map(|l| (l - max).exp()).sum();
+        let softmax: Vec<f32> = logits.iter().map(|l| (l - max).exp() / z).collect();
+        assert!(
+            (ce.value + (softmax[3] + 1e-8).ln()).abs() < 1e-6,
+            "{}",
+            ce.value
+        );
+        // gradient = softmax − target, sums to zero
+        for i in 0..4 {
+            assert!(
+                (g[i] - (softmax[i] - target[i])).abs() < 1e-6,
+                "ce grad {i}"
+            );
+        }
+        assert!(g.iter().sum::<f32>().abs() < 1e-6);
+        // a confident correct prediction has near-zero loss; a wrong one ≈ margin
+        assert!(cross_entropy_loss(&[0.0, 30.0], &[0.0, 1.0], &mut [0.0; 2]).value < 1e-6);
+        // a confidently wrong one is capped by the 1e-8 floor inside the log:
+        // −ln(e^−30 / (1 + e^−30) + 1e-8) ≈ 18.42, not the raw 30-unit margin
+        let wrong = cross_entropy_loss(&[0.0, 30.0], &[1.0, 0.0], &mut [0.0; 2]).value;
+        let capped = -(((-30.0f32).exp() / (1.0 + (-30.0f32).exp())) + 1e-8).ln();
+        assert!((wrong - capped).abs() < 1e-4, "{wrong} vs {capped}");
+        // empty inputs: loss 0
+        assert_eq!(mse_loss(&[], &[], &mut []).value, 0.0);
+        assert_eq!(mae_loss(&[], &[], &mut []).value, 0.0);
+        assert_eq!(cross_entropy_loss(&[], &[], &mut []).value, 0.0);
+    }
+
+    #[test]
+    fn sgd_with_momentum_follows_the_textbook_recurrence() {
+        // v ← μ v + g, p ← p − lr v; constant gradient g = 1 → v_t = (1 − μ^t)/(1 − μ)
+        let (lr, mu) = (0.1f32, 0.5f32);
+        let mut sgd = SgdState::new(
+            SgdConfig {
+                learning_rate: lr,
+                momentum: mu,
+            },
+            2,
+        );
+        let mut p = [1.0f32, -1.0];
+        let mut expected = p;
+        let mut v = [0.0f32; 2];
+        for _ in 0..6 {
+            sgd.step(&mut p, &[1.0, -2.0]);
+            for i in 0..2 {
+                v[i] = mu * v[i] + [1.0, -2.0][i];
+                expected[i] -= lr * v[i];
+            }
+            for i in 0..2 {
+                assert!((p[i] - expected[i]).abs() < 1e-6, "{p:?} vs {expected:?}");
+            }
+        }
+        // no momentum: plain gradient descent
+        let mut plain = SgdState::new(SgdConfig::new(0.25), 1);
+        let mut q = [2.0f32];
+        plain.step(&mut q, &[4.0]);
+        assert_eq!(q, [1.0]);
+        assert_eq!(SgdConfig::new(0.25).momentum, 0.0);
+    }
+
+    #[test]
+    fn adam_first_step_moves_by_the_learning_rate_and_later_steps_follow_the_recurrence() {
+        // With bias correction, the first Adam step is exactly −lr·sign(g)
+        // (m̂ = g, v̂ = g², step = lr·g/(|g| + ε)) for any gradient magnitude
+        let lr = 0.01f32;
+        let mut adam = AdamState::new(AdamConfig::new(lr), 3);
+        assert_eq!(adam.step_count(), 0);
+        let mut p = [0.0f32; 3];
+        adam.step(&mut p, &[5.0, -0.001, 1e3]);
+        assert_eq!(adam.step_count(), 1);
+        for (x, g) in p.iter().zip([5.0f32, -0.001, 1e3]) {
+            assert!((x + lr * g.signum()).abs() < 1e-6, "{p:?}");
+        }
+        // scalar recurrence with a constant gradient, checked against a
+        // straightforward re-implementation for 20 steps
+        let cfg = AdamConfig {
+            learning_rate: 0.1,
+            beta1: 0.8,
+            beta2: 0.95,
+            epsilon: 1e-6,
+        };
+        let mut adam = AdamState::new(cfg.clone(), 1);
+        let (mut p, mut m, mut v, mut expected) = ([3.0f32], 0.0f32, 0.0f32, 3.0f32);
+        let g = -2.0f32;
+        for t in 1..=20 {
+            adam.step(&mut p, &[g]);
+            m = cfg.beta1 * m + (1.0 - cfg.beta1) * g;
+            v = cfg.beta2 * v + (1.0 - cfg.beta2) * g * g;
+            let m_hat = m / (1.0 - cfg.beta1.powi(t));
+            let v_hat = v / (1.0 - cfg.beta2.powi(t));
+            expected -= cfg.learning_rate * m_hat / (v_hat.sqrt() + cfg.epsilon);
+            assert!(
+                (p[0] - expected).abs() < 1e-5,
+                "step {t}: {} vs {expected}",
+                p[0]
+            );
+        }
+        assert_eq!(adam.step_count(), 20);
+        // a zero gradient never moves a parameter
+        let mut still = AdamState::new(AdamConfig::new(1.0), 1);
+        let mut q = [7.0f32];
+        still.step(&mut q, &[0.0]);
+        assert_eq!(q, [7.0]);
+        assert_eq!(AdamConfig::new(1.0).beta1, 0.9);
+        assert_eq!(AdamConfig::new(1.0).beta2, 0.999);
+        assert_eq!(AdamConfig::new(1.0).epsilon, 1e-8);
+    }
+}
