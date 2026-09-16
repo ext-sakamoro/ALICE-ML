@@ -349,10 +349,14 @@ impl TernaryWeightKernel {
 /// * `input` - Input vector (length = `in_features`)
 /// * `weights` - Packed ternary weights
 /// * `output` - Pre-allocated output buffer (length = `out_features`)
+///
+/// # Panics
+/// Panics if `input.len() != weights.in_features()` or
+/// `output.len() != weights.out_features()` (same contract as the SIMD dispatch)
 #[inline]
 pub fn ternary_matvec(input: &[f32], weights: &TernaryWeight, output: &mut [f32]) {
-    debug_assert_eq!(input.len(), weights.in_features());
-    debug_assert_eq!(output.len(), weights.out_features());
+    assert_eq!(input.len(), weights.in_features());
+    assert_eq!(output.len(), weights.out_features());
 
     let in_features = weights.in_features();
     let scale = weights.scale();
@@ -432,10 +436,14 @@ pub fn ternary_matmul_batch(
 }
 
 /// Bit-parallel ternary matvec (DPS)
+///
+/// # Panics
+/// Panics if `input.len() != weights.in_features()` or
+/// `output.len() != weights.out_features()` (same contract as the SIMD dispatch)
 #[inline]
 pub fn ternary_matvec_kernel(input: &[f32], weights: &TernaryWeightKernel, output: &mut [f32]) {
-    debug_assert_eq!(input.len(), weights.in_features());
-    debug_assert_eq!(output.len(), weights.out_features());
+    assert_eq!(input.len(), weights.in_features());
+    assert_eq!(output.len(), weights.out_features());
 
     let in_features = weights.in_features;
     let words_per_row = weights.words_per_row;
@@ -468,14 +476,18 @@ pub fn ternary_matvec_kernel(input: &[f32], weights: &TernaryWeightKernel, outpu
 }
 
 /// Bit-parallel matvec with quantized INT8 input (DPS)
+///
+/// # Panics
+/// Panics if `input.len() != weights.in_features()` or
+/// `output.len() != weights.out_features()` (same contract as the SIMD dispatch)
 #[inline]
 pub fn ternary_matvec_kernel_quantized(
     input: &QuantizedTensor,
     weights: &TernaryWeightKernel,
     output: &mut [f32],
 ) {
-    debug_assert_eq!(input.len(), weights.in_features());
-    debug_assert_eq!(output.len(), weights.out_features());
+    assert_eq!(input.len(), weights.in_features());
+    assert_eq!(output.len(), weights.out_features());
 
     let x = input.data_i8();
     let x_scale = input.scale();

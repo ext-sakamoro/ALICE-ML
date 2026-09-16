@@ -98,6 +98,27 @@ fn every_matvec_kernel_equals_the_closed_form_for_all_lengths() {
 }
 
 #[test]
+fn every_matvec_entry_point_rejects_mismatched_lengths() {
+    use std::panic::catch_unwind;
+    let kernel = TernaryWeightKernel::from_ternary(&[1; 64], 2, 32);
+    let packed = TernaryWeight::from_ternary(&[1; 64], 2, 32);
+    let short_in = [1.0f32; 8];
+    let ok_in = [1.0f32; 32];
+    let mut ok_out = [0.0f32; 2];
+    assert!(catch_unwind(|| ternary_matvec_kernel(&short_in, &kernel, &mut [0.0; 2])).is_err());
+    assert!(catch_unwind(|| ternary_matvec_kernel(&ok_in, &kernel, &mut [0.0; 1])).is_err());
+    assert!(catch_unwind(|| ternary_matvec(&short_in, &packed, &mut [0.0; 2])).is_err());
+    assert!(catch_unwind(|| ternary_matvec(&ok_in, &packed, &mut [0.0; 1])).is_err());
+    let q_short = QuantizedTensor::from_f32_slice(&short_in, &[8]);
+    assert!(
+        catch_unwind(|| ternary_matvec_kernel_quantized(&q_short, &kernel, &mut [0.0; 2])).is_err()
+    );
+    // matching lengths run
+    ternary_matvec_kernel(&ok_in, &kernel, &mut ok_out);
+    assert_eq!(ok_out, [32.0, 32.0]);
+}
+
+#[test]
 fn scale_is_a_pure_multiplier_of_the_matvec() {
     let (out_features, in_features) = (3usize, 37usize);
     let values = pattern(out_features, in_features);
