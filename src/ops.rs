@@ -700,13 +700,23 @@ pub mod simd {
     }
 
     /// Dispatch to AVX2 if available
+    ///
+    /// # Panics
+    /// Panics if `input.len() != weights.in_features()` or
+    /// `output.len() != weights.out_features()` (the AVX2 kernel reads
+    /// `input` through raw pointers, so the check is what keeps this
+    /// function safe)
     #[inline]
     pub fn ternary_matvec_dispatch(
         input: &[f32],
         weights: &TernaryWeightKernel,
         output: &mut [f32],
     ) {
+        assert_eq!(input.len(), weights.in_features());
+        assert_eq!(output.len(), weights.out_features());
         if has_avx2() {
+            // SAFETY: `has_avx2()` confirmed the CPU supports the AVX2 intrinsics
+            // and the length preconditions were asserted above
             unsafe { ternary_matvec_avx2(input, weights, output) };
         } else {
             super::ternary_matvec_kernel(input, weights, output);
@@ -765,6 +775,10 @@ pub(crate) const fn has_avx2() -> bool {
 /// - `x86_64` + AVX2: 8-wide SIMD
 /// - aarch64 + NEON: 4-wide SIMD
 /// - Fallback: scalar kernel
+///
+/// # Panics
+/// Panics if `input.len() != weights.in_features()` or
+/// `output.len() != weights.out_features()`
 #[inline]
 pub fn ternary_matvec_simd_dispatch(
     input: &[f32],
@@ -1090,6 +1104,17 @@ mod tests {
             "TernaryWeightKernel must be 64-byte (cache-line) aligned, ptr=0x{:x}",
             ptr
         );
+    }
+
+    /// A short input must be rejected before any SIMD kernel dereferences it
+    /// (the AVX2 / NEON kernels read `input` through raw pointers).
+    #[test]
+    #[should_panic(expected = "assertion `left == right` failed")]
+    fn simd_dispatch_rejects_short_input() {
+        let kernel = TernaryWeightKernel::from_ternary(&[1; 64], 2, 32);
+        let input = [1.0f32; 8];
+        let mut output = [0.0f32; 2];
+        ternary_matvec_simd_dispatch(&input, &kernel, &mut output);
     }
 
     /// simd_dispatch must produce identical results to the scalar kernel.

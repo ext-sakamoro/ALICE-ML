@@ -104,6 +104,9 @@
     clippy::too_many_lines
 )]
 #![warn(missing_docs)]
+// Every hand-written `unsafe` block states its invariant (`// SAFETY:`); the
+// FFI layer, the SIMD kernels and the arena are the only places that need one
+#![deny(clippy::undocumented_unsafe_blocks)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(not(feature = "std"))]

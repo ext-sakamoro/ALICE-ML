@@ -113,6 +113,7 @@ pub extern "C" fn am_ml_arena_new(capacity: usize) -> *mut Arena {
 pub unsafe extern "C" fn am_ml_arena_free(arena: *mut Arena) {
     guarded((), || {
         if !arena.is_null() {
+            // SAFETY: null was rejected above; the pointer came from `Box::into_raw` in the matching `am_ml_*` constructor and ownership is taken back here exactly once (freeing twice is undefined behaviour, documented)
             drop(unsafe { Box::from_raw(arena) });
         }
     });
@@ -122,6 +123,7 @@ pub unsafe extern "C" fn am_ml_arena_free(arena: *mut Arena) {
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_reset(arena: *mut Arena) {
     guarded((), || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that no other call uses concurrently (documented C API contract)
         if let Some(a) = unsafe { arena.as_mut() } {
             a.reset();
         }
@@ -132,6 +134,7 @@ pub unsafe extern "C" fn am_ml_arena_reset(arena: *mut Arena) {
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_used(arena: *const Arena) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { arena.as_ref() }.map_or(0, super::arena::Arena::used)
     })
 }
@@ -140,6 +143,7 @@ pub unsafe extern "C" fn am_ml_arena_used(arena: *const Arena) -> usize {
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_capacity(arena: *const Arena) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { arena.as_ref() }.map_or(0, super::arena::Arena::capacity)
     })
 }
@@ -148,6 +152,7 @@ pub unsafe extern "C" fn am_ml_arena_capacity(arena: *const Arena) -> usize {
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_remaining(arena: *const Arena) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { arena.as_ref() }.map_or(0, super::arena::Arena::remaining)
     })
 }
@@ -157,6 +162,7 @@ pub unsafe extern "C" fn am_ml_arena_remaining(arena: *const Arena) -> usize {
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_arena_alloc_f32(arena: *mut Arena, count: usize) -> *mut f32 {
     guarded(core::ptr::null_mut(), || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that no other call uses concurrently (documented C API contract)
         let Some(a) = (unsafe { arena.as_mut() }) else {
             return core::ptr::null_mut();
         };
@@ -181,6 +187,7 @@ pub unsafe extern "C" fn am_ml_weight_from_ternary(
         if values.is_null() || len == 0 {
             return core::ptr::null_mut();
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let slice = unsafe { core::slice::from_raw_parts(values, len) };
         let w = TernaryWeight::from_ternary(slice, out_features, in_features);
         Box::into_raw(Box::new(w))
@@ -192,6 +199,7 @@ pub unsafe extern "C" fn am_ml_weight_from_ternary(
 pub unsafe extern "C" fn am_ml_weight_free(w: *mut TernaryWeight) {
     guarded((), || {
         if !w.is_null() {
+            // SAFETY: null was rejected above; the pointer came from `Box::into_raw` in the matching `am_ml_*` constructor and ownership is taken back here exactly once (freeing twice is undefined behaviour, documented)
             drop(unsafe { Box::from_raw(w) });
         }
     });
@@ -201,6 +209,7 @@ pub unsafe extern "C" fn am_ml_weight_free(w: *mut TernaryWeight) {
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_out_features(w: *const TernaryWeight) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { w.as_ref() }.map_or(0, super::ops::TernaryWeight::out_features)
     })
 }
@@ -209,6 +218,7 @@ pub unsafe extern "C" fn am_ml_weight_out_features(w: *const TernaryWeight) -> u
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_in_features(w: *const TernaryWeight) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { w.as_ref() }.map_or(0, super::ops::TernaryWeight::in_features)
     })
 }
@@ -217,6 +227,7 @@ pub unsafe extern "C" fn am_ml_weight_in_features(w: *const TernaryWeight) -> us
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_scale(w: *const TernaryWeight) -> f32 {
     guarded(0.0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { w.as_ref() }.map_or(0.0, super::ops::TernaryWeight::scale)
     })
 }
@@ -225,6 +236,7 @@ pub unsafe extern "C" fn am_ml_weight_scale(w: *const TernaryWeight) -> f32 {
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_memory_bytes(w: *const TernaryWeight) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { w.as_ref() }.map_or(0, super::ops::TernaryWeight::memory_bytes)
     })
 }
@@ -233,6 +245,7 @@ pub unsafe extern "C" fn am_ml_weight_memory_bytes(w: *const TernaryWeight) -> u
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_compression_ratio(w: *const TernaryWeight) -> f32 {
     guarded(0.0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { w.as_ref() }.map_or(0.0, super::ops::TernaryWeight::compression_ratio)
     })
 }
@@ -241,6 +254,7 @@ pub unsafe extern "C" fn am_ml_weight_compression_ratio(w: *const TernaryWeight)
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_weight_get(w: *const TernaryWeight, row: usize, col: usize) -> i8 {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { w.as_ref() }.map_or(0, |w| w.get(row, col).to_i8())
     })
 }
@@ -261,6 +275,7 @@ pub unsafe extern "C" fn am_ml_kernel_from_ternary(
         if values.is_null() || len == 0 {
             return core::ptr::null_mut();
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let slice = unsafe { core::slice::from_raw_parts(values, len) };
         let k = TernaryWeightKernel::from_ternary(slice, out_features, in_features);
         Box::into_raw(Box::new(k))
@@ -280,6 +295,7 @@ pub unsafe extern "C" fn am_ml_kernel_from_ternary_scaled(
         if values.is_null() || len == 0 {
             return core::ptr::null_mut();
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let slice = unsafe { core::slice::from_raw_parts(values, len) };
         let k = TernaryWeightKernel::from_ternary_scaled(slice, out_features, in_features, scale);
         Box::into_raw(Box::new(k))
@@ -292,6 +308,7 @@ pub unsafe extern "C" fn am_ml_kernel_from_weight(
     w: *const TernaryWeight,
 ) -> *mut TernaryWeightKernel {
     guarded(core::ptr::null_mut(), || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         let Some(w) = (unsafe { w.as_ref() }) else {
             return core::ptr::null_mut();
         };
@@ -305,6 +322,7 @@ pub unsafe extern "C" fn am_ml_kernel_from_weight(
 pub unsafe extern "C" fn am_ml_kernel_free(k: *mut TernaryWeightKernel) {
     guarded((), || {
         if !k.is_null() {
+            // SAFETY: null was rejected above; the pointer came from `Box::into_raw` in the matching `am_ml_*` constructor and ownership is taken back here exactly once (freeing twice is undefined behaviour, documented)
             drop(unsafe { Box::from_raw(k) });
         }
     });
@@ -314,6 +332,7 @@ pub unsafe extern "C" fn am_ml_kernel_free(k: *mut TernaryWeightKernel) {
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_out_features(k: *const TernaryWeightKernel) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::out_features)
     })
 }
@@ -322,6 +341,7 @@ pub unsafe extern "C" fn am_ml_kernel_out_features(k: *const TernaryWeightKernel
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_in_features(k: *const TernaryWeightKernel) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::in_features)
     })
 }
@@ -330,6 +350,7 @@ pub unsafe extern "C" fn am_ml_kernel_in_features(k: *const TernaryWeightKernel)
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_memory_bytes(k: *const TernaryWeightKernel) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::memory_bytes)
     })
 }
@@ -338,6 +359,7 @@ pub unsafe extern "C" fn am_ml_kernel_memory_bytes(k: *const TernaryWeightKernel
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_compression_ratio(k: *const TernaryWeightKernel) -> f32 {
     guarded(0.0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { k.as_ref() }.map_or(0.0, super::ops::TernaryWeightKernel::compression_ratio)
     })
 }
@@ -346,6 +368,7 @@ pub unsafe extern "C" fn am_ml_kernel_compression_ratio(k: *const TernaryWeightK
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_kernel_words_per_row(k: *const TernaryWeightKernel) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { k.as_ref() }.map_or(0, super::ops::TernaryWeightKernel::words_per_row)
     })
 }
@@ -366,13 +389,16 @@ pub unsafe extern "C" fn am_ml_matvec(
 ) {
     guarded((), || {
         let (Some(w), false, false) = (
+            // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
             unsafe { weights.as_ref() },
             input.is_null(),
             output.is_null(),
         ) else {
             return;
         };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
         ternary_matvec(inp, w, out);
     });
@@ -389,13 +415,16 @@ pub unsafe extern "C" fn am_ml_matvec_kernel(
 ) {
     guarded((), || {
         let (Some(k), false, false) = (
+            // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
             unsafe { kernel.as_ref() },
             input.is_null(),
             output.is_null(),
         ) else {
             return;
         };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
         ternary_matvec_kernel(inp, k, out);
     });
@@ -414,13 +443,16 @@ pub unsafe extern "C" fn am_ml_matmul_batch(
 ) {
     guarded((), || {
         let (Some(w), false, false) = (
+            // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
             unsafe { weights.as_ref() },
             input.is_null(),
             output.is_null(),
         ) else {
             return;
         };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
         ternary_matmul_batch(inp, w, out, batch_size);
     });
@@ -437,13 +469,16 @@ pub unsafe extern "C" fn am_ml_matvec_simd(
 ) {
     guarded((), || {
         let (Some(k), false, false) = (
+            // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
             unsafe { kernel.as_ref() },
             input.is_null(),
             output.is_null(),
         ) else {
             return;
         };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
         ternary_matvec_simd_dispatch(inp, k, out);
     });
@@ -460,8 +495,11 @@ pub unsafe extern "C" fn am_ml_tensor_add(a: *const f32, b: *const f32, out: *mu
         if a.is_null() || b.is_null() || out.is_null() {
             return;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sb = unsafe { core::slice::from_raw_parts(b, len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
         for ((o, &av), &bv) in so.iter_mut().zip(sa.iter()).zip(sb.iter()) {
             *o = av + bv;
@@ -476,8 +514,11 @@ pub unsafe extern "C" fn am_ml_tensor_sub(a: *const f32, b: *const f32, out: *mu
         if a.is_null() || b.is_null() || out.is_null() {
             return;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sb = unsafe { core::slice::from_raw_parts(b, len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
         for ((o, &av), &bv) in so.iter_mut().zip(sa.iter()).zip(sb.iter()) {
             *o = av - bv;
@@ -492,7 +533,9 @@ pub unsafe extern "C" fn am_ml_tensor_scale(a: *const f32, s: f32, out: *mut f32
         if a.is_null() || out.is_null() {
             return;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
         for (o, &av) in so.iter_mut().zip(sa.iter()) {
             *o = av * s;
@@ -507,7 +550,9 @@ pub unsafe extern "C" fn am_ml_tensor_copy(a: *const f32, out: *mut f32, len: us
         if a.is_null() || out.is_null() {
             return;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
         so.copy_from_slice(sa);
     });
@@ -520,6 +565,7 @@ pub unsafe extern "C" fn am_ml_tensor_sum(a: *const f32, len: usize) -> f32 {
         if a.is_null() {
             return 0.0;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
         sa.iter().sum()
     })
@@ -532,6 +578,7 @@ pub unsafe extern "C" fn am_ml_tensor_mean(a: *const f32, len: usize) -> f32 {
         if a.is_null() || len == 0 {
             return 0.0;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
         sa.iter().sum::<f32>() / len as f32
     })
@@ -544,6 +591,7 @@ pub unsafe extern "C" fn am_ml_tensor_min(a: *const f32, len: usize) -> f32 {
         if a.is_null() || len == 0 {
             return 0.0;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
         sa.iter().copied().fold(f32::INFINITY, f32::min)
     })
@@ -556,6 +604,7 @@ pub unsafe extern "C" fn am_ml_tensor_max(a: *const f32, len: usize) -> f32 {
         if a.is_null() || len == 0 {
             return 0.0;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
         sa.iter().copied().fold(f32::NEG_INFINITY, f32::max)
     })
@@ -568,7 +617,9 @@ pub unsafe extern "C" fn am_ml_tensor_relu(a: *const f32, out: *mut f32, len: us
         if a.is_null() || out.is_null() {
             return;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
         for (o, &av) in so.iter_mut().zip(sa.iter()) {
             *o = av.max(0.0);
@@ -583,6 +634,7 @@ pub unsafe extern "C" fn am_ml_tensor_relu_inplace(a: *mut f32, len: usize) {
         if a.is_null() {
             return;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts_mut(a, len) };
         for x in sa.iter_mut() {
             *x = x.max(0.0);
@@ -597,7 +649,9 @@ pub unsafe extern "C" fn am_ml_tensor_softmax(a: *const f32, out: *mut f32, len:
         if a.is_null() || out.is_null() || len == 0 {
             return;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
         let max_val = sa.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let mut sum = 0.0f32;
@@ -626,7 +680,9 @@ pub unsafe extern "C" fn am_ml_tensor_rms_norm(
         if a.is_null() || out.is_null() || len == 0 {
             return;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
         let mut sum_sq: f32 = 0.0;
         for &x in sa {
@@ -651,7 +707,9 @@ pub unsafe extern "C" fn am_ml_tensor_layer_norm(
         if a.is_null() || out.is_null() || len == 0 {
             return;
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
         let mean = sa.iter().sum::<f32>() / len as f32;
         let mut var: f32 = 0.0;
@@ -685,10 +743,12 @@ pub unsafe extern "C" fn am_ml_bitlinear_new(
         if kernel.is_null() {
             return core::ptr::null_mut();
         }
+        // SAFETY: null was rejected above; the pointer came from `Box::into_raw` in the matching `am_ml_*` constructor and ownership is taken back here exactly once (freeing twice is undefined behaviour, documented)
         let k = unsafe { *Box::from_raw(kernel) };
         let b = if bias.is_null() || bias_len == 0 {
             None
         } else {
+            // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
             Some(unsafe { core::slice::from_raw_parts(bias, bias_len) }.to_vec())
         };
         let layer = BitLinear::new(k, b, pre_norm != 0);
@@ -701,6 +761,7 @@ pub unsafe extern "C" fn am_ml_bitlinear_new(
 pub unsafe extern "C" fn am_ml_bitlinear_free(layer: *mut BitLinear) {
     guarded((), || {
         if !layer.is_null() {
+            // SAFETY: null was rejected above; the pointer came from `Box::into_raw` in the matching `am_ml_*` constructor and ownership is taken back here exactly once (freeing twice is undefined behaviour, documented)
             drop(unsafe { Box::from_raw(layer) });
         }
     });
@@ -717,11 +778,14 @@ pub unsafe extern "C" fn am_ml_bitlinear_forward(
 ) {
     guarded((), || {
         let (Some(l), false, false) =
+            // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
             (unsafe { layer.as_ref() }, input.is_null(), output.is_null())
         else {
             return;
         };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
         l.forward(inp, out);
     });
@@ -731,6 +795,7 @@ pub unsafe extern "C" fn am_ml_bitlinear_forward(
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_bitlinear_memory_bytes(layer: *const BitLinear) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { layer.as_ref() }.map_or(0, super::layer::BitLinear::memory_bytes)
     })
 }
@@ -739,6 +804,7 @@ pub unsafe extern "C" fn am_ml_bitlinear_memory_bytes(layer: *const BitLinear) -
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_bitlinear_compression_ratio(layer: *const BitLinear) -> f32 {
     guarded(0.0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { layer.as_ref() }.map_or(0.0, super::layer::BitLinear::compression_ratio)
     })
 }
@@ -760,6 +826,7 @@ pub unsafe extern "C" fn am_ml_quantize(
         if weights.is_null() || len == 0 {
             return core::ptr::null_mut();
         }
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let slice = unsafe { core::slice::from_raw_parts(weights, len) };
         let (tw, _stats) = quantize_to_ternary(slice, out_features, in_features);
         Box::into_raw(Box::new(tw))
@@ -775,6 +842,7 @@ pub unsafe extern "C" fn am_ml_dequantize(
     max_len: usize,
 ) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         let Some(w) = (unsafe { w.as_ref() }) else {
             return 0;
         };
@@ -783,6 +851,7 @@ pub unsafe extern "C" fn am_ml_dequantize(
         }
         let deq = dequantize_from_ternary(w);
         let n = deq.len().min(max_len);
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let dst = unsafe { core::slice::from_raw_parts_mut(out, n) };
         dst.copy_from_slice(&deq[..n]);
         n
@@ -797,9 +866,11 @@ pub unsafe extern "C" fn am_ml_quantization_error_mae(
     quantized: *const TernaryWeight,
 ) -> f32 {
     guarded(0.0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         let (Some(q), false) = (unsafe { quantized.as_ref() }, original.is_null()) else {
             return -1.0;
         };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let orig = unsafe { core::slice::from_raw_parts(original, len) };
         let err = compute_quantization_error(orig, q);
         err.mae
@@ -814,9 +885,11 @@ pub unsafe extern "C" fn am_ml_quantization_error_snr(
     quantized: *const TernaryWeight,
 ) -> f32 {
     guarded(0.0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         let (Some(q), false) = (unsafe { quantized.as_ref() }, original.is_null()) else {
             return -1.0;
         };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let orig = unsafe { core::slice::from_raw_parts(original, len) };
         let err = compute_quantization_error(orig, q);
         err.snr
@@ -848,6 +921,7 @@ pub unsafe extern "C" fn am_ml_micro_model_build_random(
             CacheBudget::custom(budget_bytes, "ffi"),
         );
         if !hidden_dims.is_null() && hidden_count > 0 {
+            // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
             let dims = unsafe { core::slice::from_raw_parts(hidden_dims, hidden_count) };
             for &d in dims {
                 builder = builder.add_hidden(d);
@@ -862,6 +936,7 @@ pub unsafe extern "C" fn am_ml_micro_model_build_random(
 pub unsafe extern "C" fn am_ml_micro_model_free(model: *mut MicroModel) {
     guarded((), || {
         if !model.is_null() {
+            // SAFETY: null was rejected above; the pointer came from `Box::into_raw` in the matching `am_ml_*` constructor and ownership is taken back here exactly once (freeing twice is undefined behaviour, documented)
             drop(unsafe { Box::from_raw(model) });
         }
     });
@@ -878,11 +953,14 @@ pub unsafe extern "C" fn am_ml_micro_model_forward(
 ) {
     guarded((), || {
         let (Some(m), false, false) =
+            // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
             (unsafe { model.as_ref() }, input.is_null(), output.is_null())
         else {
             return;
         };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let out = unsafe { core::slice::from_raw_parts_mut(output, out_len) };
         m.forward(inp, out);
     });
@@ -900,13 +978,16 @@ pub unsafe extern "C" fn am_ml_micro_model_predict_tokens(
 ) -> usize {
     guarded(0, || {
         let (Some(m), false, false) = (
+            // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
             unsafe { model.as_ref() },
             input.is_null(),
             token_logits.is_null(),
         ) else {
             return 0;
         };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let out = unsafe { core::slice::from_raw_parts_mut(token_logits, logits_len) };
         m.predict_tokens(inp, out, steps)
     })
@@ -916,6 +997,7 @@ pub unsafe extern "C" fn am_ml_micro_model_predict_tokens(
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_micro_model_memory_bytes(model: *const MicroModel) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { model.as_ref() }.map_or(0, MicroModel::memory_bytes)
     })
 }
@@ -924,6 +1006,7 @@ pub unsafe extern "C" fn am_ml_micro_model_memory_bytes(model: *const MicroModel
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_micro_model_fits_in_budget(model: *const MicroModel) -> c_int {
     guarded(-1, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { model.as_ref() }.map_or(0, |m| c_int::from(m.fits_in_budget()))
     })
 }
@@ -932,6 +1015,7 @@ pub unsafe extern "C" fn am_ml_micro_model_fits_in_budget(model: *const MicroMod
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_micro_model_param_count(model: *const MicroModel) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { model.as_ref() }.map_or(0, MicroModel::param_count)
     })
 }
@@ -939,6 +1023,7 @@ pub unsafe extern "C" fn am_ml_micro_model_param_count(model: *const MicroModel)
 /// レイヤー数。
 #[no_mangle]
 pub unsafe extern "C" fn am_ml_micro_model_depth(model: *const MicroModel) -> usize {
+    // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
     guarded(0, || unsafe { model.as_ref() }.map_or(0, MicroModel::depth))
 }
 
@@ -961,7 +1046,9 @@ pub unsafe extern "C" fn am_ml_cache_decoder_new(
         if draft.is_null() || verify_kernel.is_null() {
             return core::ptr::null_mut();
         }
+        // SAFETY: null was rejected above; the pointer came from `Box::into_raw` in the matching `am_ml_*` constructor and ownership is taken back here exactly once (freeing twice is undefined behaviour, documented)
         let d = unsafe { *Box::from_raw(draft) };
+        // SAFETY: null was rejected above; the pointer came from `Box::into_raw` in the matching `am_ml_*` constructor and ownership is taken back here exactly once (freeing twice is undefined behaviour, documented)
         let vk = unsafe { *Box::from_raw(verify_kernel) };
         let v_layer = BitLinear::new(vk, None, false);
         let config = DecoderConfig {
@@ -981,6 +1068,7 @@ pub unsafe extern "C" fn am_ml_cache_decoder_new(
 pub unsafe extern "C" fn am_ml_cache_decoder_free(decoder: *mut CacheResidentDecoder) {
     guarded((), || {
         if !decoder.is_null() {
+            // SAFETY: null was rejected above; the pointer came from `Box::into_raw` in the matching `am_ml_*` constructor and ownership is taken back here exactly once (freeing twice is undefined behaviour, documented)
             drop(unsafe { Box::from_raw(decoder) });
         }
     });
@@ -1000,6 +1088,7 @@ pub unsafe extern "C" fn am_ml_cache_decoder_step(
 ) -> usize {
     guarded(0, || {
         let (Some(dec), false, false, false) = (
+            // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
             unsafe { decoder.as_ref() },
             input.is_null(),
             draft_buf.is_null(),
@@ -1007,8 +1096,11 @@ pub unsafe extern "C" fn am_ml_cache_decoder_step(
         ) else {
             return 0;
         };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let inp = unsafe { core::slice::from_raw_parts(input, in_len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let dbuf = unsafe { core::slice::from_raw_parts_mut(draft_buf, draft_len) };
+        // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let vbuf = unsafe { core::slice::from_raw_parts_mut(verify_buf, verify_len) };
         let result = dec.decode_step(inp, dbuf, vbuf);
         result.accepted
@@ -1021,6 +1113,7 @@ pub unsafe extern "C" fn am_ml_cache_decoder_fits_in_cache(
     decoder: *const CacheResidentDecoder,
 ) -> c_int {
     guarded(-1, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { decoder.as_ref() }.map_or(0, |d| c_int::from(d.draft_fits_in_cache()))
     })
 }
@@ -1031,6 +1124,7 @@ pub unsafe extern "C" fn am_ml_cache_decoder_draft_memory(
     decoder: *const CacheResidentDecoder,
 ) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { decoder.as_ref() }.map_or(0, CacheResidentDecoder::draft_memory_bytes)
     })
 }
@@ -1041,6 +1135,7 @@ pub unsafe extern "C" fn am_ml_cache_decoder_verify_memory(
     decoder: *const CacheResidentDecoder,
 ) -> usize {
     guarded(0, || {
+        // SAFETY: the caller passes null (handled as `None`) or a live handle from the matching `am_ml_*` constructor that has not been freed (documented C API contract)
         unsafe { decoder.as_ref() }.map_or(0, CacheResidentDecoder::verify_memory_bytes)
     })
 }
@@ -1075,6 +1170,7 @@ mod tests {
     fn test_version() {
         let v = am_ml_version();
         assert!(!v.is_null());
+        // SAFETY: `am_ml_version` returns a pointer to a static NUL-terminated string
         let s = unsafe { std::ffi::CStr::from_ptr(v) }.to_str().unwrap();
         assert!(s.starts_with("0."));
     }
@@ -1086,16 +1182,20 @@ mod tests {
         // 4 values but 3 × 3 = 9 features: `TernaryWeight::from_ternary` panics
         // (assert_eq on the length); the C caller must get null, not an abort
         let values: [i8; 4] = [1, -1, 0, 1];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let w = unsafe { am_ml_weight_from_ternary(values.as_ptr(), 4, 3, 3) };
         assert!(w.is_null());
         let msg = am_ml_last_error();
         assert!(!msg.is_null());
+        // SAFETY: non-null was asserted above; the message is NUL-terminated and stays valid until the next clear on this thread
         let s = unsafe { std::ffi::CStr::from_ptr(msg) }.to_str().unwrap();
         assert!(s.starts_with("internal panic: "), "{s}");
         // a later successful call leaves the message in place until cleared
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let ok = unsafe { am_ml_weight_from_ternary(values.as_ptr(), 4, 2, 2) };
         assert!(!ok.is_null());
         assert!(!am_ml_last_error().is_null());
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_weight_free(ok) };
         am_ml_clear_last_error();
         assert!(am_ml_last_error().is_null());
@@ -1104,6 +1204,7 @@ mod tests {
     #[test]
     fn set_last_error_replaces_interior_nul() {
         set_last_error("a\0b");
+        // SAFETY: non-null was asserted above; the message is NUL-terminated and stays valid until the next clear on this thread
         let s = unsafe { std::ffi::CStr::from_ptr(am_ml_last_error()) }
             .to_str()
             .unwrap();
@@ -1115,71 +1216,103 @@ mod tests {
     fn test_arena_lifecycle() {
         let arena = am_ml_arena_new(4096);
         assert!(!arena.is_null());
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_arena_capacity(arena) }, 4096);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_arena_used(arena) }, 0);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let ptr = unsafe { am_ml_arena_alloc_f32(arena, 10) };
         assert!(!ptr.is_null());
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_arena_used(arena) } > 0);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_arena_reset(arena) };
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_arena_used(arena) }, 0);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_arena_free(arena) };
     }
 
     #[test]
     fn test_weight_lifecycle() {
         let values: [i8; 4] = [1, -1, 0, 1];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let w = unsafe { am_ml_weight_from_ternary(values.as_ptr(), 4, 2, 2) };
         assert!(!w.is_null());
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_weight_out_features(w) }, 2);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_weight_in_features(w) }, 2);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!((unsafe { am_ml_weight_scale(w) } - 1.0).abs() < 1e-6);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_weight_memory_bytes(w) } > 0);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_weight_compression_ratio(w) } > 0.0);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_weight_get(w, 0, 0) }, 1);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_weight_get(w, 0, 1) }, -1);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_weight_get(w, 1, 0) }, 0);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_weight_get(w, 1, 1) }, 1);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_weight_free(w) };
     }
 
     #[test]
     fn test_kernel_lifecycle() {
         let values: [i8; 4] = [1, -1, 0, 1];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let k = unsafe { am_ml_kernel_from_ternary(values.as_ptr(), 4, 2, 2) };
         assert!(!k.is_null());
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_kernel_out_features(k) }, 2);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_kernel_in_features(k) }, 2);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_kernel_memory_bytes(k) } > 0);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_kernel_words_per_row(k) } > 0);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_kernel_free(k) };
     }
 
     #[test]
     fn test_kernel_from_weight() {
         let values: [i8; 4] = [1, -1, 0, 1];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let w = unsafe { am_ml_weight_from_ternary(values.as_ptr(), 4, 2, 2) };
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let k = unsafe { am_ml_kernel_from_weight(w) };
         assert!(!k.is_null());
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_kernel_out_features(k) }, 2);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_kernel_free(k) };
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_weight_free(w) };
     }
 
     #[test]
     fn test_kernel_scaled() {
         let values: [i8; 4] = [1, -1, 0, 1];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let k = unsafe { am_ml_kernel_from_ternary_scaled(values.as_ptr(), 4, 2, 2, 2.5) };
         assert!(!k.is_null());
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!((unsafe { am_ml_kernel_compression_ratio(k) }) > 0.0);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_kernel_free(k) };
     }
 
@@ -1188,41 +1321,49 @@ mod tests {
         // W = [[1,-1],[0,1]], x = [2,3]
         // y[0] = 2 - 3 = -1, y[1] = 0 + 3 = 3
         let values: [i8; 4] = [1, -1, 0, 1];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let w = unsafe { am_ml_weight_from_ternary(values.as_ptr(), 4, 2, 2) };
 
         let input = [2.0f32, 3.0];
         let mut output = [0.0f32; 2];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_matvec(input.as_ptr(), 2, w, output.as_mut_ptr(), 2) };
 
         assert!((output[0] - (-1.0)).abs() < 1e-6);
         assert!((output[1] - 3.0).abs() < 1e-6);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_weight_free(w) };
     }
 
     #[test]
     fn test_matvec_kernel() {
         let values: [i8; 4] = [1, -1, 0, 1];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let k = unsafe { am_ml_kernel_from_ternary(values.as_ptr(), 4, 2, 2) };
 
         let input = [2.0f32, 3.0];
         let mut output = [0.0f32; 2];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_matvec_kernel(input.as_ptr(), 2, k, output.as_mut_ptr(), 2) };
 
         assert!((output[0] - (-1.0)).abs() < 1e-6);
         assert!((output[1] - 3.0).abs() < 1e-6);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_kernel_free(k) };
     }
 
     #[test]
     fn test_matmul_batch() {
         let values: [i8; 4] = [1, -1, 0, 1];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let w = unsafe { am_ml_weight_from_ternary(values.as_ptr(), 4, 2, 2) };
 
         // batch_size=2: [2,3] and [1,1]
         let input = [2.0f32, 3.0, 1.0, 1.0];
         let mut output = [0.0f32; 4];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_matmul_batch(input.as_ptr(), 4, w, output.as_mut_ptr(), 4, 2) };
 
         assert!((output[0] - (-1.0)).abs() < 1e-6);
@@ -1230,21 +1371,25 @@ mod tests {
         assert!((output[2] - 0.0).abs() < 1e-6);
         assert!((output[3] - 1.0).abs() < 1e-6);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_weight_free(w) };
     }
 
     #[test]
     fn test_matvec_simd() {
         let values: [i8; 4] = [1, -1, 0, 1];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let k = unsafe { am_ml_kernel_from_ternary(values.as_ptr(), 4, 2, 2) };
 
         let input = [2.0f32, 3.0];
         let mut output = [0.0f32; 2];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_matvec_simd(input.as_ptr(), 2, k, output.as_mut_ptr(), 2) };
 
         assert!((output[0] - (-1.0)).abs() < 1e-6);
         assert!((output[1] - 3.0).abs() < 1e-6);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_kernel_free(k) };
     }
 
@@ -1254,20 +1399,27 @@ mod tests {
         let b = [0.5f32, 1.0, 1.5, 2.0];
         let mut out = [0.0f32; 4];
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_tensor_add(a.as_ptr(), b.as_ptr(), out.as_mut_ptr(), 4) };
         assert!((out[0] - 1.5).abs() < 1e-6);
         assert!((out[3] - 6.0).abs() < 1e-6);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_tensor_sub(a.as_ptr(), b.as_ptr(), out.as_mut_ptr(), 4) };
         assert!((out[0] - 0.5).abs() < 1e-6);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_tensor_scale(a.as_ptr(), 2.0, out.as_mut_ptr(), 4) };
         assert!((out[0] - 2.0).abs() < 1e-6);
         assert!((out[3] - 8.0).abs() < 1e-6);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!((unsafe { am_ml_tensor_sum(a.as_ptr(), 4) } - 10.0).abs() < 1e-6);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!((unsafe { am_ml_tensor_mean(a.as_ptr(), 4) } - 2.5).abs() < 1e-6);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!((unsafe { am_ml_tensor_min(a.as_ptr(), 4) } - 1.0).abs() < 1e-6);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!((unsafe { am_ml_tensor_max(a.as_ptr(), 4) } - 4.0).abs() < 1e-6);
     }
 
@@ -1276,11 +1428,13 @@ mod tests {
         let a = [-1.0f32, 0.0, 1.0, -2.0];
         let mut out = [0.0f32; 4];
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_tensor_relu(a.as_ptr(), out.as_mut_ptr(), 4) };
         assert!((out[0] - 0.0).abs() < 1e-6);
         assert!((out[2] - 1.0).abs() < 1e-6);
 
         let mut inplace = [-1.0f32, 2.0, -3.0, 4.0];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_tensor_relu_inplace(inplace.as_mut_ptr(), 4) };
         assert!((inplace[0] - 0.0).abs() < 1e-6);
         assert!((inplace[1] - 2.0).abs() < 1e-6);
@@ -1290,6 +1444,7 @@ mod tests {
     fn test_tensor_softmax() {
         let a = [1.0f32, 2.0, 3.0];
         let mut out = [0.0f32; 3];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_tensor_softmax(a.as_ptr(), out.as_mut_ptr(), 3) };
         let total: f32 = out.iter().sum();
         assert!((total - 1.0).abs() < 1e-5);
@@ -1300,11 +1455,13 @@ mod tests {
         let a = [1.0f32, 2.0, 3.0, 4.0];
         let mut out = [0.0f32; 4];
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_tensor_rms_norm(a.as_ptr(), 1e-5, out.as_mut_ptr(), 4) };
         // RMS norm should produce unit-variance-ish output
         let rms_sum: f32 = out.iter().map(|x| x * x).sum();
         assert!((rms_sum / 4.0 - 1.0).abs() < 0.1);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_tensor_layer_norm(a.as_ptr(), 1e-5, out.as_mut_ptr(), 4) };
         let mean: f32 = out.iter().sum::<f32>() / 4.0;
         assert!(mean.abs() < 1e-4);
@@ -1313,66 +1470,82 @@ mod tests {
     #[test]
     fn test_bitlinear() {
         let values: [i8; 4] = [1, -1, 0, 1];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let k = unsafe { am_ml_kernel_from_ternary(values.as_ptr(), 4, 2, 2) };
 
         // バイアスなし、pre_norm=false
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let layer = unsafe { am_ml_bitlinear_new(k, core::ptr::null(), 0, 0) };
         assert!(!layer.is_null());
 
         let input = [2.0f32, 3.0];
         let mut output = [0.0f32; 2];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_bitlinear_forward(layer, input.as_ptr(), 2, output.as_mut_ptr(), 2) };
 
         assert!((output[0] - (-1.0)).abs() < 1e-5);
         assert!((output[1] - 3.0).abs() < 1e-5);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_bitlinear_memory_bytes(layer) } > 0);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_bitlinear_compression_ratio(layer) } > 0.0);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_bitlinear_free(layer) };
     }
 
     #[test]
     fn test_bitlinear_with_bias() {
         let values: [i8; 4] = [1, -1, 0, 1];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let k = unsafe { am_ml_kernel_from_ternary(values.as_ptr(), 4, 2, 2) };
         let bias = [10.0f32, -5.0];
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let layer = unsafe { am_ml_bitlinear_new(k, bias.as_ptr(), 2, 0) };
 
         let input = [2.0f32, 3.0];
         let mut output = [0.0f32; 2];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_bitlinear_forward(layer, input.as_ptr(), 2, output.as_mut_ptr(), 2) };
 
         // y[0] = -1 + 10 = 9, y[1] = 3 - 5 = -2
         assert!((output[0] - 9.0).abs() < 1e-5);
         assert!((output[1] - (-2.0)).abs() < 1e-5);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_bitlinear_free(layer) };
     }
 
     #[test]
     fn test_quantize_roundtrip() {
         let fp32: [f32; 4] = [0.5, -0.3, 0.0, 0.8];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let w = unsafe { am_ml_quantize(fp32.as_ptr(), 4, 2, 2) };
         assert!(!w.is_null());
 
         let mut deq = [0.0f32; 4];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let n = unsafe { am_ml_dequantize(w, deq.as_mut_ptr(), 4) };
         assert_eq!(n, 4);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let mae = unsafe { am_ml_quantization_error_mae(fp32.as_ptr(), 4, w) };
         assert!(mae >= 0.0);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let snr = unsafe { am_ml_quantization_error_snr(fp32.as_ptr(), 4, w) };
         assert!(snr > 0.0);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_weight_free(w) };
     }
 
     #[test]
     fn test_null_safety() {
         // 全関数がnullポインタでクラッシュしないことを確認
+        // SAFETY: null is a documented valid argument for every entry point (each returns its sentinel)
         unsafe {
             am_ml_arena_free(core::ptr::null_mut());
             am_ml_arena_reset(core::ptr::null_mut());
@@ -1429,6 +1602,7 @@ mod tests {
     fn test_tensor_copy_ffi() {
         let a = [1.0f32, 2.0, 3.0];
         let mut out = [0.0f32; 3];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_tensor_copy(a.as_ptr(), out.as_mut_ptr(), 3) };
         assert_eq!(out, [1.0, 2.0, 3.0]);
     }
@@ -1436,8 +1610,10 @@ mod tests {
     #[test]
     fn test_arena_alloc_exhaustion() {
         let arena = am_ml_arena_new(32);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let ptr = unsafe { am_ml_arena_alloc_f32(arena, 1000) };
         assert!(ptr.is_null());
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_arena_free(arena) };
     }
 
@@ -1445,37 +1621,47 @@ mod tests {
     fn test_micro_model_lifecycle() {
         let hidden: [usize; 1] = [32];
         let model =
+            // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
             unsafe { am_ml_micro_model_build_random(32, 32, hidden.as_ptr(), 1, 512 * 1024, 42) };
         assert!(!model.is_null());
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_micro_model_fits_in_budget(model) } != 0);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_micro_model_memory_bytes(model) } > 0);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_micro_model_param_count(model) } > 0);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert_eq!(unsafe { am_ml_micro_model_depth(model) }, 2);
 
         let input = [1.0f32; 32];
         let mut output = vec![0.0f32; 32];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe {
             am_ml_micro_model_forward(model, input.as_ptr(), 32, output.as_mut_ptr(), 32);
         }
         let sum: f32 = output.iter().map(|x| x.abs()).sum();
         assert!(sum > 0.0, "output should be non-zero");
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_micro_model_free(model) };
     }
 
     #[test]
     fn test_micro_model_predict_tokens() {
         let model =
+            // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
             unsafe { am_ml_micro_model_build_random(16, 16, core::ptr::null(), 0, 512 * 1024, 1) };
 
         let input = [1.0f32; 16];
         let mut logits = vec![0.0f32; 16 * 3];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let steps = unsafe {
             am_ml_micro_model_predict_tokens(model, input.as_ptr(), 16, logits.as_mut_ptr(), 48, 3)
         };
         assert_eq!(steps, 3);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_micro_model_free(model) };
     }
 
@@ -1483,20 +1669,27 @@ mod tests {
     fn test_cache_decoder_lifecycle() {
         let hidden: [usize; 1] = [16];
         let draft =
+            // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
             unsafe { am_ml_micro_model_build_random(16, 16, hidden.as_ptr(), 1, 512 * 1024, 42) };
         let values = vec![1i8; 16 * 16];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let vk = unsafe { am_ml_kernel_from_ternary(values.as_ptr(), values.len(), 16, 16) };
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let decoder = unsafe { am_ml_cache_decoder_new(draft, vk, 3) };
         assert!(!decoder.is_null());
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_cache_decoder_fits_in_cache(decoder) } != 0);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_cache_decoder_draft_memory(decoder) } > 0);
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         assert!(unsafe { am_ml_cache_decoder_verify_memory(decoder) } > 0);
 
         let input = [1.0f32; 16];
         let mut draft_buf = vec![0.0f32; 16 * 3];
         let mut verify_buf = vec![0.0f32; 16 * 3];
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         let accepted = unsafe {
             am_ml_cache_decoder_step(
                 decoder,
@@ -1510,11 +1703,13 @@ mod tests {
         };
         assert!(accepted >= 1);
 
+        // SAFETY: pointers and lengths come from the local arrays / handles created in this test and match
         unsafe { am_ml_cache_decoder_free(decoder) };
     }
 
     #[test]
     fn test_micro_model_null_safety() {
+        // SAFETY: null is a documented valid argument for every entry point (each returns its sentinel)
         unsafe {
             am_ml_micro_model_free(core::ptr::null_mut());
             assert_eq!(am_ml_micro_model_memory_bytes(core::ptr::null()), 0);

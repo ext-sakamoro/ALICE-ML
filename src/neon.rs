@@ -139,10 +139,20 @@ pub unsafe fn ternary_matvec_neon(
 }
 
 /// Dispatch to NEON on aarch64 (always available on `ARMv8`+)
+///
+/// # Panics
+/// Panics if `input.len() != weights.in_features()` or
+/// `output.len() != weights.out_features()` (the kernel reads `input`
+/// through raw pointers, so the check is what keeps this function safe)
 #[cfg(target_arch = "aarch64")]
 #[inline]
 pub fn ternary_matvec_dispatch(input: &[f32], weights: &TernaryWeightKernel, output: &mut [f32]) {
-    // NEON is mandatory on aarch64 — no runtime detection needed
+    assert_eq!(input.len(), weights.in_features());
+    assert_eq!(output.len(), weights.out_features());
+    // SAFETY: NEON is a baseline feature of every aarch64 CPU (no runtime
+    // detection needed); the length preconditions of `ternary_matvec_neon`
+    // were asserted above and the kernel's bit arrays are sized by its
+    // constructor
     unsafe { ternary_matvec_neon(input, weights, output) }
 }
 
@@ -161,6 +171,8 @@ mod tests {
         let weights = TernaryWeightKernel::from_ternary(&[1, -1, 0, 1], 2, 2);
         let input = [2.0f32, 3.0];
         let mut output = [0.0f32; 2];
+
+        // SAFETY: NEON is baseline on aarch64; the local arrays match the kernel
 
         unsafe { ternary_matvec_neon(&input, &weights, &mut output) };
 
@@ -182,6 +194,8 @@ mod tests {
         let input = [1.0f32, 2.0, 3.0, 4.0];
         let mut output = [0.0f32; 1];
 
+        // SAFETY: NEON is baseline on aarch64; the local arrays match the kernel
+
         unsafe { ternary_matvec_neon(&input, &weights, &mut output) };
 
         assert!(
@@ -202,6 +216,7 @@ mod tests {
         let mut out_neon = [0.0f32; 3];
 
         ternary_matvec_kernel(&input, &kernel, &mut out_scalar);
+        // SAFETY: NEON is baseline on aarch64; the local arrays match the kernel
         unsafe { ternary_matvec_neon(&input, &kernel, &mut out_neon) };
 
         for i in 0..3 {
@@ -227,6 +242,7 @@ mod tests {
         let mut out_neon = [0.0f32; 2];
 
         ternary_matvec_kernel(&input, &kernel, &mut out_scalar);
+        // SAFETY: NEON is baseline on aarch64; the local arrays match the kernel
         unsafe { ternary_matvec_neon(&input, &kernel, &mut out_neon) };
 
         for i in 0..2 {
@@ -245,6 +261,8 @@ mod tests {
         let kernel = TernaryWeightKernel::from_ternary_scaled(&[1, 1, 1, 1], 1, 4, 0.5);
         let input = [1.0f32, 2.0, 3.0, 4.0];
         let mut output = [0.0f32; 1];
+
+        // SAFETY: NEON is baseline on aarch64; the local arrays match the kernel
 
         unsafe { ternary_matvec_neon(&input, &kernel, &mut output) };
 

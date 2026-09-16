@@ -5,12 +5,15 @@ All notable changes to ALICE-ML will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **`ternary_matvec_simd_dispatch` (safe, crate root export) と arch 別 `ternary_matvec_dispatch` は入力長を検証していなかった** AVX2 / NEON kernel は `input` を raw pointer で読むため、`input.len() < in_features` で out-of-bounds read (UB) `assert_eq!` で長さを確認して panic に変更 (`# Panics` doc、`simd_dispatch_rejects_short_input` test) scalar kernel は slice index で panic していた
 - **`no_std` build が一度も通っていなかった** (`--no-default-features` で 65 error: `mul_add` / `sqrt` / `exp` / `vec!` 等) — `src/math.rs` の `FloatExt` trait (`libm` 委譲、`std` 時は不使用) と `alloc::vec` import で修正、`parallel` feature は `std` を要求するよう明示 host rlib + bare-metal `thumbv7em-none-eabihf` で build を確認 (`crate-type` に cdylib / staticlib を含むため `cargo check` では panic_handler / allocator 要求で落ちる、検証は `cargo rustc --crate-type rlib`)
 - feature-gated module (`ffi` / `safetensors` / `llama3_ternary`) の clippy pedantic / nursery 38 件と rustdoc 未解決 link 2 件 (CI が `--features simd` のみで未 lint だった)
 - `elyza_ternary` / `qwen_qat_test` example に `required-features = ["safetensors"]` (default build で unresolved import)
 
 ### Added
 - `ffi`: 全 65 `extern "C"` 関数の本体を `catch_unwind` (`guarded`) で囲み、Rust panic を host process の abort ではなく sentinel 戻り値 (null / 0 / 0.0 / -1) にする `am_ml_last_error()` で thread-local の message (NUL 終端) を取得、`am_ml_clear_last_error()` で消去 UE5 / Unity / C から呼ぶ時に一つの bad input で editor が落ちない
+
+- `#![deny(clippy::undocumented_unsafe_blocks)]`: 手書き `unsafe` block 212 個 (ffi 195 / neon 6 / tensor 8 / arena 2 / ops 1) 全てに `// SAFETY:` で不変条件を記載
 
 ### Changed
 - release profile の `panic = "abort"` を除去 (`catch_unwind` を無効化するため、理由は `Cargo.toml` の comment)
