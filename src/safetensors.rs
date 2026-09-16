@@ -106,10 +106,12 @@ pub struct TensorDesc {
 }
 
 impl TensorDesc {
-    /// Total number of elements.
+    /// Total number of elements (saturating: a hostile header cannot overflow it).
     #[must_use]
     pub fn n_elements(&self) -> usize {
-        self.shape.iter().product()
+        self.shape
+            .iter()
+            .fold(1usize, |acc, &d| acc.saturating_mul(d))
     }
 
     /// Data size in bytes.
@@ -376,21 +378,31 @@ impl<'a> SafetensorsFile<'a> {
     }
 
     /// Get raw bytes for a tensor.
+    ///
+    /// `None` when the descriptor's `data_offsets` are inverted or reach past
+    /// the data section (a truncated or hostile file is an error, not a panic).
     #[must_use]
     pub fn tensor_bytes(&self, name: &str) -> Option<&'a [u8]> {
         let desc = self.tensors.get(name)?;
-        if desc.data_end > self.data.len() {
+        if desc.data_start > desc.data_end || desc.data_end > self.data.len() {
             return None;
         }
         Some(&self.data[desc.data_start..desc.data_end])
     }
 
     /// Read a tensor as f32, converting from BF16/FP16 if needed.
+    ///
+    /// `None` for an unsupported dtype, or when the byte range is shorter than
+    /// `shape` × element size (the header and the data disagree).
     #[must_use]
     pub fn tensor_to_f32(&self, name: &str) -> Option<Vec<f32>> {
         let desc = self.tensors.get(name)?;
         let bytes = self.tensor_bytes(name)?;
         let n = desc.n_elements();
+        let needed = n.checked_mul(desc.dtype.element_size())?;
+        if desc.dtype == DType::Other || bytes.len() < needed {
+            return None;
+        }
 
         let mut out = Vec::with_capacity(n);
 

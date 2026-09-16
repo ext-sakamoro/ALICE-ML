@@ -1062,3 +1062,191 @@ mod ternary_llama {
         let _ = model(vec![zero(H, H); 6]);
     }
 }
+
+// ----------------------------------------------------------------------------
+// safetensors: files are synthesised from the format definition
+// ([u64 LE header length][JSON header][data]) so parsing is checked against the
+// values that went in, and malformed headers are errors, never panics
+// ----------------------------------------------------------------------------
+
+#[cfg(feature = "safetensors")]
+mod safetensors_format {
+    use alice_ml::safetensors::{bf16_to_f32, fp16_to_f32, DType, SafetensorsFile};
+
+    fn file(header: &str, data: &[u8]) -> Vec<u8> {
+        let mut v = (header.len() as u64).to_le_bytes().to_vec();
+        v.extend_from_slice(header.as_bytes());
+        v.extend_from_slice(data);
+        v
+    }
+
+    #[test]
+    fn f32_f16_bf16_tensors_read_back_exactly_and_metadata_is_skipped() {
+        let f32s = [1.5f32, -2.25, 0.0, 1e-3, 3.0e8];
+        let f16s: [u16; 4] = [0x3C00, 0xC000, 0x0001, 0x7C00]; // 1.0, −2.0, smallest subnormal, +inf
+        let bf16s: [u16; 3] = [0x3F80, 0xC040, 0x0000]; // 1.0, −3.0, 0.0
+        let mut data = Vec::new();
+        for v in f32s {
+            data.extend_from_slice(&v.to_le_bytes());
+        }
+        let f16_start = data.len();
+        for v in f16s {
+            data.extend_from_slice(&v.to_le_bytes());
+        }
+        let bf16_start = data.len();
+        for v in bf16s {
+            data.extend_from_slice(&v.to_le_bytes());
+        }
+        let header = format!(
+            concat!(
+                "{{\"__metadata__\":{{\"format\":\"pt\",\"nested\":{{\"a\":[1,2,{{\"b\":\"}}\"}}]}}}},",
+                "\"a.weight\":{{\"dtype\":\"F32\",\"shape\":[5],\"data_offsets\":[0,{}]}},",
+                "\"b.weight\":{{\"dtype\":\"F16\",\"shape\":[2,2],\"data_offsets\":[{},{}]}},",
+                "\"c.bias\":{{\"dtype\":\"BF16\",\"shape\":[3],\"data_offsets\":[{},{}]}},",
+                "\"d.other\":{{\"dtype\":\"I8\",\"shape\":[2],\"data_offsets\":[0,2]}}}}"
+            ),
+            f16_start,
+            f16_start,
+            bf16_start,
+            bf16_start,
+            data.len()
+        );
+        let bytes = file(&header, &data);
+        let sf = SafetensorsFile::parse(&bytes).expect("well-formed file parses");
+        assert_eq!(sf.len(), 4);
+        assert!(!sf.is_empty());
+        let mut names = sf.tensor_names();
+        names.sort_unstable();
+        assert_eq!(names, vec!["a.weight", "b.weight", "c.bias", "d.other"]);
+
+        let a = sf.tensor_desc("a.weight").unwrap();
+        assert_eq!(
+            (a.dtype, &a.shape[..], a.n_elements(), a.data_size()),
+            (DType::F32, &[5][..], 5, 20)
+        );
+        assert_eq!(sf.tensor_to_f32("a.weight").unwrap(), f32s.to_vec());
+        assert_eq!(sf.tensor_bytes("a.weight").unwrap(), &data[..20]);
+
+        let b = sf.tensor_desc("b.weight").unwrap();
+        assert_eq!((b.dtype, b.n_elements(), b.data_size()), (DType::F16, 4, 8));
+        let expect_f16: Vec<f32> = f16s.iter().map(|&h| fp16_to_f32(h)).collect();
+        assert_eq!(sf.tensor_to_f32("b.weight").unwrap(), expect_f16);
+        assert_eq!(expect_f16[0], 1.0);
+        assert_eq!(expect_f16[1], -2.0);
+        assert_eq!(expect_f16[2], 2f32.powi(-24)); // smallest f16 subnormal
+        assert!(expect_f16[3].is_infinite() && expect_f16[3] > 0.0);
+
+        let c = sf.tensor_desc("c.bias").unwrap();
+        assert_eq!((c.dtype, c.n_elements()), (DType::BF16, 3));
+        assert_eq!(sf.tensor_to_f32("c.bias").unwrap(), vec![1.0, -3.0, 0.0]);
+        assert_eq!(bf16_to_f32(0x3F80), 1.0);
+
+        // unsupported dtype: descriptor is kept, conversion is refused
+        let d = sf.tensor_desc("d.other").unwrap();
+        assert_eq!((d.dtype, d.dtype.element_size()), (DType::Other, 0));
+        assert!(sf.tensor_to_f32("d.other").is_none());
+        assert!(sf.tensor_to_f32("missing").is_none());
+        assert!(sf.tensor_desc("missing").is_none());
+        assert_eq!(
+            DType::F32.element_size()
+                + DType::F16.element_size()
+                + DType::BF16.element_size()
+                + DType::F64.element_size(),
+            4 + 2 + 2 + 8
+        );
+    }
+
+    #[test]
+    fn half_precision_conversions_follow_ieee_754() {
+        // fp16: sign / 5-bit exponent (bias 15) / 10-bit mantissa
+        for (bits, value) in [
+            (0x0000u16, 0.0f32),
+            (0x8000, -0.0),
+            (0x3C00, 1.0),
+            (0x3E00, 1.5),
+            (0x4900, 10.0),
+            (0x7BFF, 65504.0),                            // max finite
+            (0x0400, 2f32.powi(-14)),                     // min normal
+            (0x03FF, 2f32.powi(-14) * (1023.0 / 1024.0)), // max subnormal
+            (0xFC00, f32::NEG_INFINITY),
+        ] {
+            let got = fp16_to_f32(bits);
+            assert!(
+                got == value && got.is_sign_negative() == value.is_sign_negative(),
+                "fp16 {bits:#06x}: {got} vs {value}"
+            );
+        }
+        assert!(fp16_to_f32(0x7E00).is_nan());
+        // bf16 is the top half of an f32
+        for bits in [0x3F80u16, 0xBF80, 0x4049, 0x0080, 0x7F80, 0x0000] {
+            assert_eq!(
+                bf16_to_f32(bits).to_bits(),
+                u32::from(bits) << 16,
+                "bf16 {bits:#06x}"
+            );
+        }
+        assert!(bf16_to_f32(0x7FC0).is_nan());
+    }
+
+    #[test]
+    fn malformed_files_are_rejected_without_panicking() {
+        // shorter than the length prefix / header longer than the file
+        assert!(SafetensorsFile::parse(&[0u8; 7]).is_none());
+        assert!(SafetensorsFile::parse(&file("{}", &[])[..9]).is_none());
+        let mut huge = 1_000_000u64.to_le_bytes().to_vec();
+        huge.extend_from_slice(b"{}");
+        assert!(SafetensorsFile::parse(&huge).is_none());
+        // header must be an object
+        assert!(SafetensorsFile::parse(&file("[]", &[])).is_none());
+        assert!(SafetensorsFile::parse(&file("", &[])).is_none());
+        // an empty object is a valid file with no tensors
+        let bytes_empty = file("{}", &[]);
+        let empty = SafetensorsFile::parse(&bytes_empty).unwrap();
+        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
+        // a tensor whose descriptor is not an object is skipped, not fatal
+        let bytes_sf = file(
+            "{\"x\":\"junk\",\"y\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]}}",
+            &1.0f32.to_le_bytes(),
+        );
+        let sf = SafetensorsFile::parse(&bytes_sf).unwrap();
+        assert_eq!(sf.len(), 1);
+        assert_eq!(sf.tensor_to_f32("y").unwrap(), vec![1.0]);
+        // data section shorter than the declared range → None
+        let bytes_sf = file(
+            "{\"y\":{\"dtype\":\"F32\",\"shape\":[4],\"data_offsets\":[0,16]}}",
+            &[0u8; 8],
+        );
+        let sf = SafetensorsFile::parse(&bytes_sf).unwrap();
+        assert!(sf.tensor_bytes("y").is_none());
+        assert!(sf.tensor_to_f32("y").is_none());
+        // shape × element size larger than the byte range → None, not an index panic
+        let bytes_sf = file(
+            "{\"y\":{\"dtype\":\"F32\",\"shape\":[1000],\"data_offsets\":[0,4]}}",
+            &[0u8; 4],
+        );
+        let sf = SafetensorsFile::parse(&bytes_sf).unwrap();
+        assert!(sf.tensor_bytes("y").is_some());
+        assert!(sf.tensor_to_f32("y").is_none());
+        // inverted offsets → None
+        let bytes_sf = file(
+            "{\"y\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[8,4]}}",
+            &[0u8; 8],
+        );
+        let sf = SafetensorsFile::parse(&bytes_sf).unwrap();
+        assert!(sf.tensor_bytes("y").is_none());
+        // absurd shape does not overflow n_elements
+        let bytes_sf = file("{\"y\":{\"dtype\":\"F32\",\"shape\":[4294967296,4294967296,4294967296],\"data_offsets\":[0,4]}}", &[0u8; 4]);
+        let sf = SafetensorsFile::parse(&bytes_sf).unwrap();
+        assert_eq!(sf.tensor_desc("y").unwrap().n_elements(), usize::MAX);
+        assert!(sf.tensor_to_f32("y").is_none());
+        // non-numeric shape entry is a parse failure
+        assert!(SafetensorsFile::parse(&file(
+            "{\"y\":{\"dtype\":\"F32\",\"shape\":[\"a\"],\"data_offsets\":[0,4]}}",
+            &[0u8; 4]
+        ))
+        .is_none());
+        // truncated header (unterminated object) is a parse failure
+        assert!(SafetensorsFile::parse(&file("{\"y\":{\"dtype\":\"F32\"", &[])).is_none());
+    }
+}
