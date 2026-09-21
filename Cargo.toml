@@ -33,7 +33,7 @@ numpy = { version = "0.29", optional = true }
 alice-db = { version = "0.2.0-beta.2", optional = true, default-features = false }
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.8"
 rand = "0.8"
 tempfile = "3"
 tokenizers = "0.23"
