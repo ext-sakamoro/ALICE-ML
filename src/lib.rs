@@ -115,6 +115,7 @@ extern crate alloc;
 pub(crate) mod math;
 
 pub mod arena;
+pub mod calibration;
 pub mod dataset;
 pub mod error_analysis;
 pub mod layer;

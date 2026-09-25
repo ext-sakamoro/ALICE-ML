@@ -4,6 +4,26 @@ All notable changes to ALICE-ML will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **`calibration` module** — ALICE-* で初めての確率校正 これまで ALICE-* 全体に
+  Brier / ECE / isotonic の実装は 1 行も無く、`qat::CalibrationStats` は
+  量子化 calibration (activation range / weight sensitivity) で別物だった
+  - 測る側: `brier_binary` / `brier_multiclass` (proper scoring rule) /
+    `negative_log_likelihood` / `ReliabilityBins` (ECE と MCE、reliability diagram)
+  - 直す側: `TemperatureScaling` (1 param、黄金分割探索で NLL 最小化、**順位を
+    変えない**) / `VectorScaling` (2K param、解析勾配 `(p_k - y_k)` による勾配降下、
+    順位を変えうる) / `IsotonicRegression` (pool adjacent violators、binary)
+  - `tests/calibration_oracle.rs` 30 本 一様分布の Brier は `1 - 1/k`、NLL は
+    `ln k`、完全校正集合の ECE は厳密に 0、PAV は違反対をその平均に畳む —
+    いずれも定義から導いた値で、実行結果を写したものではない
+    温度の適合は「ラベル頻度が `softmax(z)` と厳密に一致する集合」を作って
+    `s` 倍すると最適温度が解析的に `s` になることを使い、許容 0.01 で検証
+  - `no_std` (`alloc`) 対応 `f32` 入出力に対し内部は `f64` 累算
+- 依存に `alice-det-math` 0.2 を追加 (crates.io 版、path dep ではないので
+  sibling checkout が要らない) calibration の `exp` / `ln` を platform libm に
+  任せると target ごとに最終 ulp が変わり、同じ予測から違う校正値が出るため
+  `mul_add` も使わない (FMA の有無で 1 回丸め / 2 回丸めが変わる)
+
 ### Fixed
 - **`SafetensorsFile::tensor_to_f32` / `tensor_bytes` panicked on a header that disagrees with the data**: a `shape` larger than the byte range (`shape: [1000]`, `data_offsets: [0, 4]`) indexed past the slice, inverted `data_offsets` sliced `start > end`, and a hostile `shape` overflowed `n_elements` Both return `None` now, `n_elements` saturates, an unsupported dtype returns `None` before touching the bytes (`tests/analytic_oracle.rs` § safetensors_format)
 - **`ternary_matvec_simd_dispatch` (safe, crate root export) と arch 別 `ternary_matvec_dispatch` は入力長を検証していなかった** AVX2 / NEON kernel は `input` を raw pointer で読むため、`input.len() < in_features` で out-of-bounds read (UB) `assert_eq!` で長さを確認して panic に変更 (`# Panics` doc、`simd_dispatch_rejects_short_input` test) scalar kernel は slice index で panic していた
