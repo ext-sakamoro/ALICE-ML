@@ -9,7 +9,7 @@ ALICE-ML is available under two licenses:
 ### 1. AGPL-3.0 (Open Source)
 
 For open source projects and personal use, ALICE-ML is licensed under
-the GNU Affero General Public License v3.0. See [LICENSE](LICENSE) for details.
+the GNU Affero General Public License v3.0. See [LICENSE-AGPL](LICENSE-AGPL) for details.
 
 Under this license:
 - You may use, modify, and distribute ALICE-ML freely
@@ -33,3 +33,7 @@ For commercial licensing inquiries:
 
 - GitHub: [ext-sakamoro](https://github.com/ext-sakamoro)
 - Repository: [ALICE-ML](https://github.com/ext-sakamoro/ALICE-ML)
+
+## Commercial licence enquiries
+
+- `contact@extoria.co.jp` (corporate contact for licence agreements)
