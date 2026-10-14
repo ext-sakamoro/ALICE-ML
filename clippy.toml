@@ -13,8 +13,10 @@
 # given in their own entries below, not because G1 requires it.
 #
 # `tests/g1_disallowed_methods_complete.rs` re-states G1's banned-method list
-# and asserts every one of them appears here as both f32:: and f64::; that
-# test is the thing to update first if G1's own list changes.
+# (a point-in-time copy, checked network-free) and asserts every one of them
+# appears here as both f32:: and f64::; the CI job `law-g1-banned-list`
+# (`scripts/check_g1_banned_list.py`) checks the same thing against G1's
+# *live* list instead, fetched at the revision `.github/law-g1-pin` names.
 #
 # A genuine exception goes through a site-local
 # `#[allow(clippy::disallowed_methods, reason = "...")]`, not a change to this

@@ -144,3 +144,16 @@ jobs:
         run: python3 scripts/test_readme_sync.py
       - name: readme_sync (README / README_JP / docs/MODULES.md の check)
         run: python3 scripts/readme_sync.py --check
+
+  law-g1-banned-list:
+    name: ALICE-Law G1 の banned 一覧と clippy.toml の突合 (.github/law-g1-pin に固定)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: check_g1_banned_list oracle (検査器自身の試験)
+        run: python3 scripts/test_check_g1_banned_list.py
+      - name: check_g1_banned_list (clippy.toml が .github/law-g1-pin の G1 一覧を全部 ban しているか)
+        run: python3 scripts/check_g1_banned_list.py

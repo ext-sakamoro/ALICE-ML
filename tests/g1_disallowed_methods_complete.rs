@@ -3,16 +3,22 @@
 //!
 //! The list below is a snapshot of `conformance/gates.toml`'s G1 `methods`
 //! entries with `verdict = "banned"` (ALICE-Law repo, re-checked by hand on
-//! 2026-10-15, at the commit this crate's `clippy.toml` doc comment names).
+//! 2026-10-15, at the revision `.github/law-g1-pin` currently names).
 //!
-//! Known limitation, by design rather than an oversight: this test can only
-//! confirm `clippy.toml` still matches the snapshot below, never that the
-//! snapshot itself still matches ALICE-Law's live G1 list -- that would
-//! need `cargo test` to reach another repo's checkout, which it can't do
-//! here (this crate has no sibling-checkout CI wiring, unlike the Law-
-//! dependent ALICE-* crates that do). If G1's banned list grows upstream,
-//! re-reading `conformance/gates.toml` by hand and updating `G1_BANNED`
-//! (and the length assertion below) is still a manual step.
+//! This test alone can only confirm `clippy.toml` still matches the
+//! snapshot below, never that the snapshot itself still matches ALICE-Law's
+//! live G1 list -- `cargo test` has no network access to check that. The
+//! CI job `law-g1-banned-list` (`scripts/check_g1_banned_list.py`, also run
+//! by `scripts/preflight.sh`) covers that other half: it fetches
+//! `conformance/gates.toml` at the revision `.github/law-g1-pin` names
+//! (refused unless its SHA-256 matches, the same fetch-and-verify shape
+//! some other ALICE-* repos' `.github/public-text-pin` uses for a
+//! different fetched file) and checks `clippy.toml` against G1's *live*
+//! banned list directly, so it doesn't rely on `G1_BANNED` being kept in
+//! sync at all. `G1_BANNED` here is a point-in-time copy for a
+//! network-free `cargo test`; if it and the live Law list ever disagree
+//! about what "currently banned" means, `check_g1_banned_list.py` is the
+//! one that's authoritative.
 const G1_BANNED: &[&str] = &[
     "sin", "cos", "tan", "sin_cos", "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh",
     "asinh", "acosh", "atanh", "exp", "exp2", "exp_m1", "ln", "log", "log2", "log10", "ln_1p",
