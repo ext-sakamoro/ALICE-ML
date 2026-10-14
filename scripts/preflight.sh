@@ -83,6 +83,20 @@ step "ci.yml / law-g1-banned-list: check_g1_banned_list (oracle + check)"
 python3 scripts/test_check_g1_banned_list.py
 python3 scripts/check_g1_banned_list.py
 
+step "ci.yml / msrv: check_msrv (oracle + check)"
+python3 scripts/test_check_msrv.py
+python3 scripts/check_msrv.py
+
+step "ci.yml / msrv: build with the declared rust-version"
+MSRV="$(python3 -c 'import re;print(re.search(r"^rust-version\s*=\s*\"([0-9.]+)\"",open("Cargo.toml").read(),re.M).group(1))')"
+rustup toolchain list | grep -q "^${MSRV}" || rustup toolchain install "$MSRV" --profile minimal
+( export RUSTUP_TOOLCHAIN="$MSRV" RUSTFLAGS="" CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS="fallback" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"
+  python3 scripts/check_msrv.py --rustc
+  cargo check --all-targets
+  cargo check --all-targets --features "$NATIVE_FEATURES"
+  cargo test --no-run --lib --tests --features "$NATIVE_FEATURES"
+  cargo rustc --lib --no-default-features --crate-type rlib )
+
 step "security-audit.yml / deny: Run cargo deny check all"
 ( export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"; cargo deny --all-features check all )
 

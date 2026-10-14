@@ -101,6 +101,37 @@ jobs:
       - name: Powerset (std + {ffi, simd, parallel, safetensors} depth 2)
         run: cargo hack check --lib --feature-powerset --depth 2 --exclude-features pyo3,neon --features std
 
+  # Cargo.toml の rust-version で実際に build する (rust-toolchain.toml の開発用 pin は
+  # RUSTUP_TOOLCHAIN で上書きする) toolchain の版は rust-version と同じ値でなければ
+  # scripts/check_msrv.py が落とす 比較 0 件も落とす
+  msrv:
+    name: msrv (Cargo.toml の rust-version で build)
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: "1.87"
+      RUSTFLAGS: ""
+      CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: fallback
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.87"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+      - name: check_msrv oracle (検査器自身の試験)
+        run: python3 scripts/test_check_msrv.py
+      - name: check_msrv (rust-version と toolchain の版が一致し、実 rustc がその版か)
+        run: python3 scripts/check_msrv.py --rustc
+      - name: Check (default + full native feature set, all targets)
+        run: |
+          cargo check --all-targets
+          cargo check --all-targets --features "$NATIVE_FEATURES"
+      - name: Build tests (full native feature set)
+        run: cargo test --no-run --lib --tests --features "$NATIVE_FEATURES"
+      - name: Build (no_std rlib)
+        run: cargo rustc --lib --no-default-features --crate-type rlib
+
   fmt:
     runs-on: ubuntu-latest
     steps:

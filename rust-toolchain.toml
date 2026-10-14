@@ -1,4 +1,5 @@
-# Rust toolchain pin (feedback_clippy_rust_version_drift 準拠)
+# 開発用の toolchain pin (clippy の lint 追加による drift を避ける) であって MSRV ではない
+# MSRV は Cargo.toml の rust-version で、CI の msrv job がその版で build して確かめる
 [toolchain]
 channel = "1.98.1"
 components = ["rustfmt", "clippy"]

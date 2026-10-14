@@ -167,9 +167,11 @@ Run one with `cargo run --example <name> --features safetensors`.
 
 ## MSRV
 
-Minimum supported Rust version: **1.98.1** <!-- readme-sync: msrv -->. This is
-the toolchain CI builds and tests against (`rust-toolchain.toml`); no
-older-toolchain CI job independently confirms a lower bound.
+Minimum supported Rust version: **1.87** <!-- readme-sync: msrv -->. The `msrv`
+CI job builds the crate with exactly this toolchain (default and full native
+feature sets, all targets, `no_std` rlib), and `scripts/check_msrv.py` fails if
+the job's toolchain differs from `rust-version`. `rust-toolchain.toml` is a
+development pin, not the MSRV.
 
 ## Build and test
 

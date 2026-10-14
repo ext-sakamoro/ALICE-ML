@@ -142,9 +142,10 @@ tensor.rs / training.rs)、理由はもっと単純で: `a * b + c` と `a.mul_a
 
 ## MSRV
 
-対応する最小 Rust version: **1.98.1** <!-- readme-sync: msrv --> CI が build・test に
-使う toolchain (`rust-toolchain.toml`) であり、より古い toolchain での CI job が
-これより低い下限を別途確認しているわけではない
+対応する最小 Rust version: **1.87** <!-- readme-sync: msrv --> CI の `msrv` job が
+この版の toolchain で build する (default と native feature 全部、全 target、`no_std`
+rlib) job の toolchain が `rust-version` と違えば `scripts/check_msrv.py` が落とす
+`rust-toolchain.toml` は開発用の pin であり MSRV ではない
 
 ## Build と test
 

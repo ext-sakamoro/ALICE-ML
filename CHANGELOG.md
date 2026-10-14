@@ -4,6 +4,10 @@ All notable changes to ALICE-ML will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **`rust-version` を `1.98.1` から `1.87` に訂正**: 0.3.0 は開発用の toolchain pin の値をそのまま MSRV として宣言していたが、実測の下限は 1.87 (自 crate の `Vec::len` / `is_empty` の const 利用が 1.87 で安定化、`alice-db` / `alice-zip` の `rust-version` も 1.87、`alice-det-math` は 1.85) 1.92.0 / 1.90 / 1.88 / 1.87 で `cargo check --all-targets --all-features` が通り、1.86 / 1.85 は const fn の不安定機能で落ちる `rust-version` が過大だったため 1.98.1 未満の toolchain を使う下流 (path 依存の crate など) が `requires rustc 1.98.1` で build できなかった
+- **CI に `msrv` job を追加し、宣言した MSRV を実際に build して確かめる**: `rust-toolchain.toml` の pin を `RUSTUP_TOOLCHAIN` で上書きして `rust-version` と同じ版で default / native feature 全部 / `no_std` rlib を build する `scripts/check_msrv.py` (+ `scripts/test_check_msrv.py`) が `Cargo.toml` の `rust-version` と job の `toolchain` / `RUSTUP_TOOLCHAIN` が同じ値か、`--rustc` で実際の rustc の版が一致するかを照合する 比較 0 件は fail `rust-version` だけを上げる変異で red を確認 `rust-toolchain.toml` に「MSRV ではない開発用 pin」と明記
+
 ## [0.3.0] - 2026-10-14
 
 ### Changed
