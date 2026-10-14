@@ -97,7 +97,11 @@ since `alice_det_math` 0.5 does not yet provide a 64-bit `hypot`.
 `powi` is G1's one "pending" verdict: whether it is bit-exact across targets
 (a compiler-runtime routine, repeated multiplication with a target-dependent
 order) is still being measured. G1 lets a crate ban it in the meantime; this
-crate does, routing through `alice_det_math::powi` instead.
+crate does, for both `f32` and `f64`. The one production call site
+(`quantize.rs`'s squared error) is `f32`, routed through
+`alice_det_math::powi`; `alice_det_math` 0.5 has no 64-bit `powi` yet, so
+`f64::powi` is banned pre-emptively (no production call site today, but a
+future one would otherwise go unrouted silently).
 
 `mul_add` is not a drift source — Rust specifies it as IEEE 754
 `fusedMultiplyAdd`, single-rounding and bit-exact across platforms regardless
