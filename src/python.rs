@@ -400,7 +400,10 @@ fn softmax<'py>(
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let result = py.detach(|| {
         let max_val = sa.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-        let exps: Vec<f32> = sa.iter().map(|&x| (x - max_val).exp()).collect();
+        let exps: Vec<f32> = sa
+            .iter()
+            .map(|&x| alice_det_math::exp(x - max_val))
+            .collect();
         let sum: f32 = exps.iter().sum();
         if sum > 0.0 {
             exps.iter().map(|&e| e / sum).collect()

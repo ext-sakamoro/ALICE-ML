@@ -18,3 +18,7 @@ Cargo.lock
 # Benchmarks output
 /criterion/
 fuzz/target/
+
+# Python (scripts/readme_sync.py etc.)
+__pycache__/
+*.pyc

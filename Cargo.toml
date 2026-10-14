@@ -1,7 +1,8 @@
 [package]
 name = "alice-ml"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
+rust-version = "1.98.1"
 authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
 description = "1.58bit Ternary Inference Engine - Multiplication is expensive. Addition is all you need."
 license = "AGPL-3.0-or-later OR LicenseRef-Commercial"
@@ -30,11 +31,11 @@ libm = "0.2"
 # calibration の exp / ln 用 platform libm は target ごとに最終 ulp が異なり、
 # 同じ予測から違う校正値が出てしまう crates.io 公開版なので path dep ではない
 # (= sibling checkout が要らない)
-alice-det-math = { version = "0.4", default-features = false }
+alice-det-math = { version = "0.5", default-features = false }
 rayon = { version = "1.10", optional = true }
 pyo3 = { version = "0.29", features = ["extension-module"], optional = true }
 numpy = { version = "0.29", optional = true }
-alice-db = { version = "0.2.0-beta.2", optional = true, default-features = false }
+alice-db = { version = "0.4", optional = true, default-features = false, features = ["fs"] }
 
 [dev-dependencies]
 criterion = "0.5"

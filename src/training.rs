@@ -3,6 +3,15 @@
 //! 軽量な学習インフラストラクチャ。外部フレームワーク不要で
 //! 小規模モデルの fine-tuning が可能。
 
+// `a * b + c` (two roundings) is kept instead of clippy's mul_add suggestion
+// (one rounding) on purpose: both forms are individually bit-exact across
+// platforms (mul_add is specified, single-rounding IEEE 754 fusedMultiplyAdd
+// everywhere, not FMA-hardware-dependent), but the two forms round
+// differently FROM EACH OTHER: writing one form everywhere keeps every
+// result reproducible from the source alone. This crate picks a * b + c
+// everywhere; see clippy.toml.
+#![allow(clippy::suboptimal_flops)]
+
 #[cfg(not(feature = "std"))]
 use crate::math::FloatExt;
 #[cfg(not(feature = "std"))]
@@ -45,7 +54,7 @@ pub fn mse_loss(predictions: &[f32], targets: &[f32], grad_out: &mut [f32]) -> L
     let mut sum = 0.0_f32;
     for i in 0..n {
         let diff = predictions[i] - targets[i];
-        sum = diff.mul_add(diff, sum);
+        sum += diff * diff;
         grad_out[i] = 2.0 * diff * rcp_n;
     }
     LossResult { value: sum * rcp_n }
@@ -70,14 +79,14 @@ pub fn cross_entropy_loss(logits: &[f32], targets: &[f32], grad_out: &mut [f32])
     let max_logit = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     let mut exp_sum = 0.0_f32;
     for &l in logits {
-        exp_sum += (l - max_logit).exp();
+        exp_sum += alice_det_math::exp(l - max_logit);
     }
-    let log_sum = max_logit + exp_sum.ln();
+    let log_sum = max_logit + alice_det_math::ln(exp_sum);
 
     let mut loss = 0.0_f32;
     for i in 0..n {
-        let softmax_i = (logits[i] - log_sum).exp();
-        loss = targets[i].mul_add(-(softmax_i + 1e-8).ln(), loss);
+        let softmax_i = alice_det_math::exp(logits[i] - log_sum);
+        loss += targets[i] * -alice_det_math::ln(softmax_i + 1e-8);
         grad_out[i] = softmax_i - targets[i];
     }
 
@@ -164,8 +173,8 @@ impl SgdState {
         let mom = self.config.momentum;
 
         for i in 0..params.len() {
-            self.velocity[i] = mom.mul_add(self.velocity[i], grads[i]);
-            params[i] = lr.mul_add(-self.velocity[i], params[i]);
+            self.velocity[i] = mom * self.velocity[i] + grads[i];
+            params[i] += lr * -self.velocity[i];
         }
     }
 }
@@ -237,12 +246,12 @@ impl AdamState {
         let lr = self.config.learning_rate;
         let eps = self.config.epsilon;
 
-        let bias_correction1 = 1.0 - b1.powf(t);
-        let bias_correction2 = 1.0 - b2.powf(t);
+        let bias_correction1 = 1.0 - alice_det_math::powf(b1, t);
+        let bias_correction2 = 1.0 - alice_det_math::powf(b2, t);
 
         for i in 0..params.len() {
-            self.m[i] = b1.mul_add(self.m[i], (1.0 - b1) * grads[i]);
-            self.v[i] = b2.mul_add(self.v[i], (1.0 - b2) * grads[i] * grads[i]);
+            self.m[i] = b1 * self.m[i] + (1.0 - b1) * grads[i];
+            self.v[i] = b2 * self.v[i] + (1.0 - b2) * grads[i] * grads[i];
 
             let m_hat = self.m[i] / bias_correction1;
             let v_hat = self.v[i] / bias_correction2;

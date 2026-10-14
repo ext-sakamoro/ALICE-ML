@@ -1,0 +1,77 @@
+# This list is the ALICE-Law G1 ("no-libm-direct") gate's "banned" methods
+# (conformance/gates.toml in the ALICE-Law repo), for both f32 and f64, plus
+# two methods this crate additionally restricts beyond what G1 requires.
+#
+# G1's own verdicts: everything below marked "not correctly rounded by IEEE
+# 754" is the gate's "banned" list, verbatim reason. `sqrt` is G1 "allowed"
+# (IEEE 754 requires correct rounding, so it is already cross-platform
+# bit-exact) and is NOT on this list. `mul_add` is also G1 "allowed" (IEEE
+# 754 fusedMultiplyAdd, single-rounding, bit-exact regardless of hardware FMA
+# availability) but this crate bans it anyway, and `powi` is G1 "pending" (a
+# cross-target measurement not yet concluded; G1 lets a crate ban it in the
+# meantime) and this crate also bans it — both for crate-specific reasons
+# given in their own entries below, not because G1 requires it.
+#
+# `tests/g1_disallowed_methods_complete.rs` re-states G1's banned-method list
+# and asserts every one of them appears here as both f32:: and f64::; that
+# test is the thing to update first if G1's own list changes.
+#
+# A genuine exception goes through a site-local
+# `#[allow(clippy::disallowed_methods, reason = "...")]`, not a change to this
+# file.
+disallowed-methods = [
+    { path = "f32::sin", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::sin" },
+    { path = "f32::cos", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::cos" },
+    { path = "f32::tan", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::tan" },
+    { path = "f32::sin_cos", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::sin_cos" },
+    { path = "f32::asin", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::asin" },
+    { path = "f32::acos", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::acos" },
+    { path = "f32::atan", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::atan" },
+    { path = "f32::atan2", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::atan2" },
+    { path = "f32::sinh", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f32::cosh", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f32::tanh", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::tanh" },
+    { path = "f32::asinh", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f32::acosh", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f32::atanh", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f32::exp", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::exp" },
+    { path = "f32::exp2", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f32::exp_m1", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f32::ln", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::ln" },
+    { path = "f32::log", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f32::log2", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::log2" },
+    { path = "f32::log10", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::log10" },
+    { path = "f32::ln_1p", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f32::powf", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::powf" },
+    { path = "f32::cbrt", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::cbrt" },
+    { path = "f32::hypot", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::hypot" },
+    { path = "f64::sin", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::sin64" },
+    { path = "f64::cos", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::cos64" },
+    { path = "f64::tan", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::tan64" },
+    { path = "f64::sin_cos", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::sin_cos64" },
+    { path = "f64::asin", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::asin64" },
+    { path = "f64::acos", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::acos64" },
+    { path = "f64::atan", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::atan64" },
+    { path = "f64::atan2", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::atan2_64" },
+    { path = "f64::sinh", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f64::cosh", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f64::tanh", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f64::asinh", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f64::acosh", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f64::atanh", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f64::exp", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::exp64" },
+    { path = "f64::exp2", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f64::exp_m1", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f64::ln", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::ln64" },
+    { path = "f64::log", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f64::log2", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::log2_64" },
+    { path = "f64::log10", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::log10_64" },
+    { path = "f64::ln_1p", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f64::powf", reason = "not correctly rounded by IEEE 754; platform libm results differ; use alice_det_math::powf64" },
+    { path = "f64::cbrt", reason = "not correctly rounded by IEEE 754; platform libm results differ" },
+    { path = "f64::hypot", reason = "not correctly rounded by IEEE 754; platform libm results differ; alice-det-math has no hypot64, use alice_det_math::sqrt64(a*a + b*b) instead" },
+    { path = "f32::powi", reason = "G1 marks this pending (cross-target measurement not concluded); this crate bans it now: lowers to a compiler-rt routine with unspecified multiplication order; use alice_det_math::powi" },
+    { path = "f64::powi", reason = "G1 marks this pending (cross-target measurement not concluded); this crate bans it now: lowers to a compiler-rt routine with unspecified multiplication order; use alice_det_math::powi" },
+    { path = "f32::mul_add", reason = "G1 marks this allowed (single-rounding, not a drift source) but this crate bans it anyway: it rounds differently from a * b + c; this crate writes a * b + c everywhere" },
+    { path = "f64::mul_add", reason = "G1 marks this allowed (single-rounding, not a drift source) but this crate bans it anyway: it rounds differently from a * b + c; this crate writes a * b + c everywhere" },
+]

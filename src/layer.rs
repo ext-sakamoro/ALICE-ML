@@ -4,6 +4,15 @@
 //!
 //! Author: Moroya Sakamoto
 
+// `a * b + c` (two roundings) is kept instead of clippy's mul_add suggestion
+// (one rounding) on purpose: both forms are individually bit-exact across
+// platforms (mul_add is specified, single-rounding IEEE 754 fusedMultiplyAdd
+// everywhere, not FMA-hardware-dependent), but the two forms round
+// differently FROM EACH OTHER: writing one form everywhere keeps every
+// result reproducible from the source alone. This crate picks a * b + c
+// everywhere; see clippy.toml.
+#![allow(clippy::suboptimal_flops)]
+
 #[cfg(not(feature = "std"))]
 use crate::math::FloatExt;
 use crate::ops::{ternary_matvec_kernel, TernaryWeightKernel};
@@ -95,7 +104,7 @@ impl BitLinear {
             // Compute RMS of input inline (no allocation)
             let mut sum_sq: f32 = 0.0;
             for &x in input {
-                sum_sq = x.mul_add(x, sum_sq);
+                sum_sq += x * x;
             }
             let rms = (sum_sq / input.len() as f32 + self.norm_eps).sqrt();
             let inv_rms = 1.0 / rms;

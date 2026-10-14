@@ -1,273 +1,171 @@
 # ALICE-ML
 
-**1.58bit 三値推論エンジン**
-
-> "掛け算は高い。足し算だけでいい。"
+[![crates.io](https://img.shields.io/crates/v/alice-ml.svg)](https://crates.io/crates/alice-ml)
+[![docs.rs](https://img.shields.io/docsrs/alice-ml)](https://docs.rs/alice-ml)
+[![MSRV](https://img.shields.io/crates/msrv/alice-ml)](#msrv)
+[![CI](https://github.com/ext-sakamoro/ALICE-ML/actions/workflows/ci.yml/badge.svg)](https://github.com/ext-sakamoro/ALICE-ML/actions/workflows/ci.yml)
+[![License](https://img.shields.io/crates/l/alice-ml.svg)](#license)
 
 [English](README.md) | 日本語
 
-BitNet b1.58 研究に基づく革新的な推論エンジン。浮動小数点の乗算を完全に排除し、全ての行列演算を三値重み {-1, 0, +1} による加算と減算のみで実行します。
+1.58-bit の ternary (`BitNet` 方式) 推論 engine 重みを `{-1, 0, +1}` に量子化するので、
+推論の核にある行列・ベクトル kernel は加算と減算だけで構成される — 浮動小数点の乗算も
+実行時の allocation も無い (全 buffer は arena から、Destination Passing Style で書く)
+`no_std` 対応、bare-metal / embedded target でも動く
 
-## 革命
+## 向いている用途
 
-従来のニューラルネットワーク推論には高コストな浮動小数点乗算が必要：
+ternary 量子化済みモデルの forward pass を CPU で走らせること — edge device、embedded
+target、full-precision モデルの乗算主体の matmul が合わない場所 周辺 (QAT 学習支援、
+確率 calibration、speculative decoding、weight streaming、C-ABI / Unity / UE5 / Python
+binding) も本 crate に含む
 
-```
-y = W · x  →  N×M 回の FP32 乗算
-```
+## 向いていない用途
 
-ALICE-ML は全ての乗算を排除：
+full-precision でのモデルの一から学習、ternary 推論と無関係な汎用テンソル演算 —
+[`Tensor`](src/tensor.rs) は本 crate の kernel を支えるために在るのであって、単体の
+ndarray 代替ではない GGUF 形式のモデル読込や full LLM runtime が要るなら
+[ALICE-LLM](https://github.com/ext-sakamoro/ALICE-LLM) を使うこと 本 crate 自身のモデル
+形式は `.atml` (`src/model_io.rs`、`src/safetensors.rs`)
 
-```
-y = Σ(x[i] where W=+1) - Σ(x[i] where W=-1)  →  加算のみ！
-```
-
-## 特徴
-
-- **1.58bit 重み**: 三値量子化 {-1, 0, +1}、2bit パッキング
-- **乗算ゼロ**: 行列演算は加算/減算のみ
-- **16倍圧縮**: 4 bytes → 0.25 bytes/重み
-- **AVX2 SIMD**: 8-wide `_mm256` カーネル（MatVec、add/sub/scale/ReLU）
-- **Rayon 並列化**: バッチ MatMul を `--features parallel` で自動並列化
-- **ブランチレス ReLU**: `_mm256_max_ps` / `f32::max(0.0)` — ホットパスでの分岐ゼロ
-- **ゼロコピーロード**: mmap でモデルファイルを直接マッピング
-- **依存なし**: Pure Rust、外部クレートゼロ（rayon はオプション）
-- **no_std 対応**: ベアメタル / WASM で動作
-
-## クイックスタート
-
-```rust
-use alice_ml::{Tensor, TernaryWeight, ternary_matmul, quantize_to_ternary};
-
-// FP32重みを三値に量子化
-let fp32_weights = vec![0.8, -0.9, 0.1, 0.7, -0.6, 0.2, -0.1, 0.9];
-let (weights, stats) = quantize_to_ternary(&fp32_weights, 2, 4);
-println!("圧縮率: {}x", weights.compression_ratio());  // 16x
-
-// 入力を作成
-let input = Tensor::from_slice(&[1.0, 2.0, 3.0, 4.0], &[4]);
-
-// 推論：乗算なし！
-let output = ternary_matmul(&input, &weights);
-```
-
-## 仕組み
-
-### 重みパッキング
-
-1バイトに4つの三値を格納：
-
-```
-Byte: [w3:2bit][w2:2bit][w1:2bit][w0:2bit]
-
-エンコード:
-  0b00 = 0   (ゼロ、スキップ)
-  0b01 = +1  (入力を加算)
-  0b10 = -1  (入力を減算)
-```
-
-### 三値 MatMul カーネル
-
-```rust
-// 各出力ニューロンについて:
-for weight in row {
-    match weight {
-        +1 => acc_plus += input[j],   // 加算だけ！
-        -1 => acc_minus += input[j],  // 加算だけ！
-        0  => { }                      // スキップ（スパース性ボーナス）
-    }
-}
-output[i] = (acc_plus - acc_minus) * scale;
-```
-
-## 性能
-
-| 演算 | FP32 | ALICE-ML | 改善 |
-|------|------|----------|------|
-| MatMul (1024×1024) | 200万回乗算 | 0回乗算 | ∞ |
-| メモリ | 4MB | 256KB | 16x |
-| 消費電力* | 100W | ~12W | 8x |
-
-*FPU 使用排除に基づく推定
-
-## 量子化
-
-BitNet b1.58 スタイルの量子化（学習済みスケーリング付き）：
-
-```rust
-use alice_ml::quantize_to_ternary;
-
-let (weights, stats) = quantize_to_ternary(&fp32_weights, rows, cols);
-
-println!("スケールファクター: {}", stats.scale);
-println!("スパース率: {:.1}%", stats.sparsity() * 100.0);
-println!("有効ビット数: {:.2}", stats.effective_bits());  // ~1.58
-println!("MAE: {}", stats.mae);
-```
-
-## アーキテクチャ
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                      ALICE-ML                           │
-├─────────────────────────────────────────────────────────┤
-│  ┌─────────────┐    ┌─────────────┐    ┌────────────┐  │
-│  │   Tensor    │───▶│   三値      │───▶│   出力     │  │
-│  │  (f32/i8)   │    │   MatMul    │    │   (f32)    │  │
-│  └─────────────┘    └─────────────┘    └────────────┘  │
-│         │                  │                  │        │
-│         ▼                  ▼                  ▼        │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │           パックド重み (2-bit)                    │   │
-│  │  00 = 0, 01 = +1, 10 = -1, 11 = 予約             │   │
-│  └─────────────────────────────────────────────────┘   │
-│                          │                             │
-│                          ▼                             │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │               SIMD カーネル                       │   │
-│  │  • +1 マスク抽出 → 水平加算                       │   │
-│  │  • -1 マスク抽出 → 水平減算                       │   │
-│  └─────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-```
-
-## モジュール
-
-- `tensor.rs` - N次元配列（Arenaアロケータ付き）
-- `ops.rs` - 三値 MatMul カーネル（心臓部）
-- `quantize.rs` - FP32 → 三値変換
-- `arena.rs` - ゼロアロケーションメモリ管理
-
-## ユースケース
-
-1. **エッジ推論**: FPUが限られたデバイスでLLMを実行
-2. **省エネ**: 電力を大量消費する乗算器を排除
-3. **組み込みAI**: マイコン向け no_std 対応
-4. **モデル圧縮**: 16倍小さいモデルファイル
-5. **決定論的ゲームAI**: ネットワークゲーム向けビット精度推論（ALICE-Physics連携）
-
-## ALICE-Physics 連携
-
-ALICE-ML の三値重みは物理シミュレーションにおける**決定論的ニューラル推論**の鍵です。三値 {-1, 0, +1} 重みと [ALICE-Physics](../ALICE-Physics) の128bit固定小数点演算を組み合わせることで、推論パイプライン全体が純粋な加算/減算に集約され、全プラットフォームでビット精度の結果を保証します。
-
-### なぜ 三値 + 固定小数点 = 決定論なのか
-
-```
-従来のNN:      y = W · x  → FP32乗算 → プラットフォーム依存の丸め
-ALICE-ML+Fix128: y = Σ(±x) → Fix128加減算 → どこでもビット精度一致
-```
-
-三値重みにより浮動小数点乗算は一切発生しません。唯一の乗算はスケールファクター1回のみ（モデルロード時にFix128として事前計算）。これにより以下の用途に最適な推論エンジンとなります：
-
-- **格闘ゲーム**: AI対戦相手付きフレームパーフェクトなロールバックネットコード
-- **アクションゲーム**: 全クライアントで同一に動作するラグドールコントローラ
-- **対戦型マルチプレイ**: AI制御エンティティからのデシンクゼロ
-
-### 使用例
-
-```rust
-use alice_ml::{TernaryWeight, quantize_to_ternary};
-use alice_physics::neural::*;
-use alice_physics::Fix128;
-
-// 学習済みモデルを三値に量子化
-let (weights, stats) = quantize_to_ternary(&fp32_weights, out_features, in_features);
-
-// 固定小数点に変換（ここから決定論的）
-let fixed_weights = FixedTernaryWeight::from_ternary_weight(weights);
-
-// ネットワークを構築
-let mut network = DeterministicNetwork::new(
-    vec![fixed_weights],
-    vec![Activation::ReLU],
-);
-
-// 推論 — 全プラットフォームでビット精度一致
-let input = vec![Fix128::from_int(1); in_features];
-let output = network.forward(&input);
-```
-
-### 依存関係
-
-```toml
-[dependencies]
-alice-physics = { path = "../ALICE-Physics", features = ["neural"] }
-alice-ml = { path = "../ALICE-ML" }
-```
-
-## Cargo Features
-
-| Feature | デフォルト | 説明 |
-|---------|----------|------|
-| `std` | Yes | 標準ライブラリサポート |
-| `simd` | No | AVX2 8-wide SIMDカーネル（テンソル演算 + 三値MatVec） |
-| `parallel` | No | Rayonによる並列バッチMatMul |
+## Install
 
 ```bash
-cargo build --release --features simd       # SIMDカーネル有効化
-cargo build --release --features parallel   # Rayon並列化有効化
-cargo build --release --features "simd,parallel"  # 両方
+cargo add alice-ml
 ```
 
-## 最適化
+optional な feature ([Features](#features) 参照) で FFI binding / SIMD kernel /
+Rayon 並列 batch / ALICE-DB persistence / Python binding を追加する
 
-### SIMD カーネル (`--features simd`)
-
-全テンソル演算がサイクルあたり8つの浮動小数点をベクトル化処理：
-
-| 演算 | スカラー | SIMD (AVX2) |
-|------|---------|-------------|
-| `tensor_add` | 1 add/cycle | `_mm256_add_ps` — 8 adds/cycle |
-| `tensor_sub` | 1 sub/cycle | `_mm256_sub_ps` — 8 subs/cycle |
-| `tensor_scale` | 1 mul/cycle | `_mm256_mul_ps` — 8 muls/cycle |
-| `tensor_relu` | 分岐 + cmp | `_mm256_max_ps` — 8-wide ブランチレス |
-| `ternary_matvec` | パック2bitデコード | `_mm256_blendv_ps` マスクセレクト |
-
-### 並列バッチ (`--features parallel`)
-
-バッチMatMulがRayon `par_chunks_mut` により自動的にサンプル間で並列化：
+## Example
 
 ```rust
-// 64入力 × 1024特徴量のバッチ → CPUコア間で並列処理
-ternary_matmul_batch(&inputs, &weights, &mut outputs, 64);
+use alice_ml::{TernaryWeight, ternary_matvec};
+
+// Load weights (once, at model load)
+let weights = TernaryWeight::from_ternary(&[1, -1, 0, 1], 2, 2);
+
+// Stack-allocated buffers (or from Arena)
+let input = [2.0f32, 3.0];
+let mut output = [0.0f32; 2];
+
+// Inference: ZERO ALLOCATION, NO MULTIPLICATION
+ternary_matvec(&input, &weights, &mut output);
+
+assert!((output[0] - (-1.0)).abs() < 1e-6);  // 2*1 + 3*(-1) = -1
+assert!((output[1] - 3.0).abs() < 1e-6);     // 2*0 + 3*1 = 3
 ```
 
-### ブランチレス
+## 決定論的なもの・そうでないもの
 
-ReLUは `f32::max(0.0)` を使用し、`maxss`/`maxps` にコンパイルされます — 分岐予測ミスゼロ。
+ternary matvec kernel (scalar / SIMD / INT8 入力版) は超越関数を一度も呼ばない —
+ternary 重みは `+input` / `-input` / `0` のどれかを選ぶだけなので、kernel は加算と減算の
+和であり、全 kernel variant が同じ閉形式の値と突合されている
+<!-- claim-test: every_matvec_kernel_equals_the_closed_form_for_all_lengths -->
+(`tests/analytic_oracle.rs`) この部分は platform を跨ぐ再現性のために特別な算術
+library を要らない
 
-## ロードマップ
+matvec kernel の外側では超越関数を呼んでいる — softmax、RoPE、Adam の bias
+correction、calibration の温度 fitting、quantization の entropy と SNR 0.3.0 から、
+production code (test を除く) のこれら全てを `f32`/`f64` 自身の
+`exp`/`ln`/`powf`/`powi`/`sin_cos`/`log2`/`log10` ではなく
+[`alice_det_math`](https://crates.io/crates/alice-det-math) 経由にした (platform の
+libm は IEEE 754 が platform を跨ぐ bit 一致を要求していない、`clippy.toml` の
+`clippy::disallowed_methods` lint がこれらの method への新規の直呼びを黙って通さない)
 
-- [x] ALICE-Physics連携による固定小数点推論（決定論的ゲームAI）
-- [x] AVX2 SIMDカーネル（テンソル演算 + 三値MatVec）
-- [x] Rayon並列バッチMatMul
-- [ ] NEON SIMDカーネル（ARM）
-- [ ] BitLinearレイヤー（nn.Linearのドロップイン置換）
-- [ ] PyTorchモデルからの知識蒸留
-- [ ] 動的深度のためのアーリーイグジット
-- [ ] `.aml` モデルフォーマット（mmapロード対応）
+`sqrt` / `round` はこの対象外: どちらも IEEE 754 が正しい丸めを要求する演算なので、
+library を足さずとも platform を跨いで既に bit 一致する `hypot` は `exp`/`ln` と同じ
+platform libm 問題の実例 (Rust 自身の doc が精度を「unspecified」「platform 依存」と
+明記) なので、同じ方法 (禁止 lint) で塞いだ: `f64` の `hypot` の唯一の呼び出し箇所は
+`alice_det_math::sqrt64(a*a + b*b)` に書き換え済 (`alice_det_math` 0.5 に 64-bit の
+`hypot` がまだ無いため)
 
-## 参考文献
+`mul_add` は drift の原因ではない — Rust は IEEE 754 の `fusedMultiplyAdd` として
+規定しており、target CPU に FMA 命令が有るか無いかに関わらず (無い target は正しく
+丸められた software 実装に fallback する) 1 回丸め・platform を跨いで bit 一致する
+それでも production code (test を除く) の `mul_add` 呼び出しは全て `a * b + c` に
+書き換え済 (ffi.rs / layer.rs / llama3_ternary.rs / moe.rs / quantize.rs /
+tensor.rs / training.rs)、理由はもっと単純で: `a * b + c` と `a.mul_add(b, c)` は
+互いに丸め方が違う (2 回丸め vs 1 回丸め) ので、どちらか一方の書き方に揃えておけば、
+どの結果も source だけから再現できる この crate はその 1 つに統一し、もう片方を
+禁止する (`alice_det_math` 自身の consumer policy と同じ選択)
+(layer/RMS norm が呼んでいたのも `sqrt` だけになり、`mul_add` が消えたことで platform
+依存の演算を一切呼ばなくなった)
 
-- [BitNet: Scaling 1-bit Transformers](https://arxiv.org/abs/2310.11453)
-- [BitNet b1.58](https://arxiv.org/abs/2402.17764) - 1.58bitのブレークスルー
-- [The Era of 1-bit LLMs](https://arxiv.org/abs/2402.17764)
+<!-- law-integration:begin -->
+<!-- law-integration:end -->
 
-## ライセンス
+## 含まれるもの
 
-`AGPL-3.0-or-later OR LicenseRef-Commercial` — デュアルライセンス どちらかを選べる
+| 領域 | Module |
+|---|---|
+| Core kernel | `ops`、`tensor`、`layer`、`arena`、`quantize`、`neon` |
+| 学習・calibration | `training`、`calibration`、`error_analysis`、`dataset` |
+| 推論 | `llama3_ternary`、`micro_model`、`moe`、`speculative`、`streaming` |
+| I/O・persistence | `model_io`、`safetensors`、`db_bridge` |
+| Binding | `ffi`、`python` |
 
-| 選択肢 | 条文 | こういう時 |
-|--------|------|-----------|
-| **AGPL-3.0-or-later** | [LICENSE-AGPL](LICENSE-AGPL) — 無償、報告義務なし | 自分の project も AGPL 互換の OSS、または社内利用のみ |
-| **商用ライセンス** | [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md) — 有償、コピーレフト義務を解除 | クローズドソース製品 / 商用 SaaS / エッジ・ファームウェア配布 / plugin 再配布 / ソース開示を禁じるプラットフォーム NDA |
+各 module の 1 行説明と必要 feature は [`docs/MODULES.md`](docs/MODULES.md) を参照
 
-AGPL は強いコピーレフト: `alice-ml` を link して配布 / 提供する製品・ファームウェア・
-サービスは AGPL で公開する義務がある これはオープンなエコシステムのための意図的な
-選択で、それが実行できない場合のために商用ライセンスを用意している
+## Features
 
-商用ライセンスの問い合わせ: <contact@extoria.co.jp>
+<!-- readme-sync: features -->
+| Feature | 有効化するもの |
+|---|---|
+| `std` (既定) | `f32`/`f64` の inherent method `no_std` (bare-metal/embedded) ではこの feature を外す |
+| `ffi` | C-ABI 全体 (`src/ffi.rs`)、下記 Unity/UE5 binding が使う |
+| `simd` | 手で調整した AVX2 kernel (`x86_64`) |
+| `neon` | 手で調整した NEON kernel (`aarch64`) |
+| `parallel` | Rayon 並列の batched matmul |
+| `pyo3` | Python binding (`src/python.rs`) |
+| `db` | [ALICE-DB](https://github.com/ext-sakamoro/ALICE-DB) による学習 metric の persistence |
+| `safetensors` | Safetensors parse + Llama-3 ternary 推論 (`llama3_ternary`) |
 
-## 作者
+## Binding
 
-Moroya Sakamoto ([@ext-sakamoro](https://github.com/ext-sakamoro))
+- **C-ABI** (`--features ffi`): 公開 function は全て `catch_unwind` で guard 済み、
+  panic は FFI 境界を越えて unwind せずエラーコードを返す (`am_ml_last_error` が
+  message を保持) `src/ffi.rs` 参照
+- **Unity** (C#): [`bindings/unity/AliceMl.cs`](bindings/unity/AliceMl.cs)、
+  C-ABI への薄い P/Invoke wrapper
+- **Unreal Engine 5** (C++): [`bindings/ue5/AliceMl.h`](bindings/ue5/AliceMl.h)
+- **Python** (`--features pyo3`): `src/python.rs`、PyO3 + numpy で構築
+
+## Examples
+
+| Example | 内容 |
+|---|---|
+| [`elyza_ternary`](examples/elyza_ternary.rs) | ternary 量子化済み ELYZA-JP-8B モデルの読込と推論 |
+| [`qwen_qat_test`](examples/qwen_qat_test.rs) | QAT 学習済み ternary 重みを `.atml` から読込み推論 |
+
+実行は `cargo run --example <name> --features safetensors`
+
+## MSRV
+
+対応する最小 Rust version: **1.98.1** <!-- readme-sync: msrv --> CI が build・test に
+使う toolchain (`rust-toolchain.toml`) であり、より古い toolchain での CI job が
+これより低い下限を別途確認しているわけではない
+
+## Build と test
+
+```bash
+cargo test --features ffi,simd,parallel,safetensors,db
+cargo bench --features simd  # criterion benchmark、benches/matmul.rs 参照
+```
+
+`scripts/preflight.sh` (push 前は `--quick`) が CI と同じ検査を走らせる
+(bare-metal target 向け `no_std` build を含む)
+
+## 関連 crate
+
+- [ALICE-LLM](https://github.com/ext-sakamoro/ALICE-LLM) — GGUF 形式のモデル読込と
+  full LLM runtime (本 crate の `.atml` とは別のモデル形式)
+- [alice-det-math](https://crates.io/crates/alice-det-math) — ternary kernel の外側で
+  本 crate が経由する、platform を跨ぐ決定論的な超越関数
+- [ALICE-DB](https://github.com/ext-sakamoro/ALICE-DB) — 学習 metric の persistence
+  (feature `db`)
+
+## License
+
+`AGPL-3.0-or-later OR LicenseRef-Commercial` [`LICENSE-AGPL`](LICENSE-AGPL) と
+[`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md) を参照

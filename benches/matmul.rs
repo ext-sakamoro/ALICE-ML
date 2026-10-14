@@ -7,6 +7,10 @@
     clippy::cast_possible_truncation,
     clippy::semicolon_if_nothing_returned
 )]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "bench: synthetic input data generator, not part of the deterministic production path"
+)]
 
 use alice_ml::{
     quantize_to_ternary, ternary_matvec, ternary_matvec_kernel, TernaryWeight, TernaryWeightKernel,

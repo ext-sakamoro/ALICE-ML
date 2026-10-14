@@ -1,4 +1,12 @@
 #![allow(clippy::missing_safety_doc)]
+// `a * b + c` (two roundings) is kept instead of clippy's mul_add suggestion
+// (one rounding) on purpose: both forms are individually bit-exact across
+// platforms (mul_add is specified, single-rounding IEEE 754 fusedMultiplyAdd
+// everywhere, not FMA-hardware-dependent), but the two forms round
+// differently FROM EACH OTHER: writing one form everywhere keeps every
+// result reproducible from the source alone. This crate picks a * b + c
+// everywhere; see clippy.toml.
+#![allow(clippy::suboptimal_flops)]
 //! C-ABI FFI for ALICE-ML
 //!
 //! 67 `extern "C"` functions with `am_ml_*` prefix, every body panic-isolated
@@ -656,7 +664,7 @@ pub unsafe extern "C" fn am_ml_tensor_softmax(a: *const f32, out: *mut f32, len:
         let max_val = sa.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let mut sum = 0.0f32;
         for (o, &x) in so.iter_mut().zip(sa.iter()) {
-            *o = (x - max_val).exp();
+            *o = alice_det_math::exp(x - max_val);
             sum += *o;
         }
         if sum > 0.0 {
@@ -686,7 +694,7 @@ pub unsafe extern "C" fn am_ml_tensor_rms_norm(
         let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
         let mut sum_sq: f32 = 0.0;
         for &x in sa {
-            sum_sq = x.mul_add(x, sum_sq);
+            sum_sq += x * x;
         }
         let inv_rms = 1.0 / (sum_sq / len as f32 + epsilon).sqrt();
         for (o, &x) in so.iter_mut().zip(sa.iter()) {
@@ -715,7 +723,7 @@ pub unsafe extern "C" fn am_ml_tensor_layer_norm(
         let mut var: f32 = 0.0;
         for &x in sa {
             let d = x - mean;
-            var = d.mul_add(d, var);
+            var += d * d;
         }
         let inv_std = 1.0 / (var / len as f32 + epsilon).sqrt();
         for (o, &x) in so.iter_mut().zip(sa.iter()) {

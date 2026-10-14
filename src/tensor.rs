@@ -4,6 +4,15 @@
 //!
 //! Author: Moroya Sakamoto
 
+// `a * b + c` (two roundings) is kept instead of clippy's mul_add suggestion
+// (one rounding) on purpose: both forms are individually bit-exact across
+// platforms (mul_add is specified, single-rounding IEEE 754 fusedMultiplyAdd
+// everywhere, not FMA-hardware-dependent), but the two forms round
+// differently FROM EACH OTHER: writing one form everywhere keeps every
+// result reproducible from the source alone. This crate picks a * b + c
+// everywhere; see clippy.toml.
+#![allow(clippy::suboptimal_flops)]
+
 #[cfg(not(feature = "std"))]
 use crate::math::FloatExt;
 #[cfg(not(feature = "std"))]
@@ -329,7 +338,7 @@ pub fn tensor_softmax(a: &Tensor, out: &mut Tensor) {
         // Exp and sum
         let mut sum = 0.0f32;
         for (o, &x) in out_slice.iter_mut().zip(in_slice.iter()) {
-            *o = (x - max_val).exp();
+            *o = alice_det_math::exp(x - max_val);
             sum += *o;
         }
 
@@ -512,14 +521,14 @@ pub fn tensor_copy(src: &Tensor, dst: &mut Tensor) {
 ///
 /// Reference: Schraudolph, N.N. (1999). "A Fast, Compact Approximation of the
 /// Exponential Function." *Neural Computation*, 11(4), 853-862.
-#[allow(clippy::missing_const_for_fn)] // clamp/mul_add are not const
+#[allow(clippy::missing_const_for_fn)] // clamp is not const
 #[inline(always)]
 fn fast_exp(x: f32) -> f32 {
     // Clamp to avoid overflow (> 88) and flush-to-zero (< -87)
     let x = x.clamp(-87.0, 88.0);
     // Schraudolph's approximation: bit-cast integer to float
     // 12102203.0 ~= 2^23 / ln(2);  1065353216 = 127 << 23 (exponent bias)
-    let a = (12_102_203.0_f32.mul_add(x, 1_065_353_216.0_f32)) as i32;
+    let a = (12_102_203.0_f32 * x + 1_065_353_216.0_f32) as i32;
     f32::from_bits(a as u32)
 }
 
@@ -589,9 +598,9 @@ pub fn tensor_gelu(a: &Tensor, out: &mut Tensor) {
     let sqrt_2_over_pi: f32 = 0.797_884_6; // sqrt(2/pi)
     for i in 0..len {
         let x = a.data[i];
-        let inner = sqrt_2_over_pi * (0.044_715 * x * x).mul_add(x, x);
+        let inner = sqrt_2_over_pi * ((0.044_715 * x * x) * x + x);
         // tanh(x) = (e^2x - 1)/(e^2x + 1)
-        let exp2x = (2.0 * inner).exp();
+        let exp2x = alice_det_math::exp(2.0 * inner);
         let tanh_val = (exp2x - 1.0) / (exp2x + 1.0);
         out.data[i] = 0.5 * x * (1.0 + tanh_val);
     }
@@ -603,8 +612,8 @@ pub fn tensor_gelu_inplace(a: &mut Tensor) {
     let sqrt_2_over_pi: f32 = 0.797_884_6;
     for i in 0..a.data.len() {
         let x = a.data[i];
-        let inner = sqrt_2_over_pi * (0.044_715 * x * x).mul_add(x, x);
-        let exp2x = (2.0 * inner).exp();
+        let inner = sqrt_2_over_pi * ((0.044_715 * x * x) * x + x);
+        let exp2x = alice_det_math::exp(2.0 * inner);
         let tanh_val = (exp2x - 1.0) / (exp2x + 1.0);
         a.data[i] = 0.5 * x * (1.0 + tanh_val);
     }
@@ -618,7 +627,7 @@ pub fn tensor_silu(a: &Tensor, out: &mut Tensor) {
     debug_assert_eq!(a.shape[..a.ndim], out.shape[..out.ndim]);
     for i in 0..a.data.len() {
         let x = a.data[i];
-        out.data[i] = x / (1.0 + (-x).exp());
+        out.data[i] = x / (1.0 + alice_det_math::exp(-x));
     }
 }
 
@@ -627,7 +636,7 @@ pub fn tensor_silu(a: &Tensor, out: &mut Tensor) {
 pub fn tensor_silu_inplace(a: &mut Tensor) {
     for i in 0..a.data.len() {
         let x = a.data[i];
-        a.data[i] = x / (1.0 + (-x).exp());
+        a.data[i] = x / (1.0 + alice_det_math::exp(-x));
     }
 }
 
@@ -646,7 +655,7 @@ pub fn tensor_rms_norm(a: &Tensor, weight: Option<&Tensor>, eps: f32, out: &mut 
     // Compute RMS
     let mut sum_sq: f32 = 0.0;
     for i in 0..len {
-        sum_sq = a.data[i].mul_add(a.data[i], sum_sq);
+        sum_sq += a.data[i] * a.data[i];
     }
     let rms = (sum_sq / len as f32 + eps).sqrt();
     let inv_rms = 1.0 / rms;
@@ -691,7 +700,7 @@ pub fn tensor_layer_norm(
     let mut var: f32 = 0.0;
     for i in 0..len {
         let d = a.data[i] - mean;
-        var = d.mul_add(d, var);
+        var += d * d;
     }
     var /= len as f32;
     let inv_std = 1.0 / (var + eps).sqrt();
@@ -979,6 +988,10 @@ impl OwnedTensor {
 
 #[cfg(test)]
 #[allow(clippy::wildcard_imports)]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test: an independently-computed expected value, not compared across platforms"
+)]
 mod tests {
     use super::*;
 

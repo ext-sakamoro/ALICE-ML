@@ -16,6 +16,12 @@
 #![allow(clippy::float_cmp)] // integer-valued f32 results are compared exactly on purpose
 #![allow(clippy::many_single_char_names, clippy::similar_names)]
 #![allow(clippy::suboptimal_flops, clippy::identity_op)] // oracle formulas are written as the law reads
+#![allow(
+    clippy::disallowed_methods,
+    reason = "oracle: computes the independent closed-form reference value directly via std math, \
+    compared within a single run, not for cross-platform bit-identity (that is what the production \
+    path's alice_det_math routing is for)"
+)]
 
 use alice_ml::{
     dequantize_from_ternary, quantize_to_ternary, quantize_to_ternary_qat, tensor_layer_norm,

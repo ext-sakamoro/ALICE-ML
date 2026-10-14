@@ -131,3 +131,16 @@ jobs:
         with:
           fail_level: error
           reporter: github-check
+
+  readme-sync:
+    name: readme_sync (README / README_JP / docs/MODULES.md が code と一致)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: readme_sync oracle (検査器自身の試験)
+        run: python3 scripts/test_readme_sync.py
+      - name: readme_sync (README / README_JP / docs/MODULES.md の check)
+        run: python3 scripts/readme_sync.py --check

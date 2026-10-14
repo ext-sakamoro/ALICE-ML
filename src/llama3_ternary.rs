@@ -8,6 +8,15 @@
 //! - 8B model: ~1.6 GB (ternary) vs 16 GB (BF16)
 //! - 70B model: ~13 GB (ternary) vs 140 GB (BF16)
 
+// `a * b + c` (two roundings) is kept instead of clippy's mul_add suggestion
+// (one rounding) on purpose: both forms are individually bit-exact across
+// platforms (mul_add is specified, single-rounding IEEE 754 fusedMultiplyAdd
+// everywhere, not FMA-hardware-dependent), but the two forms round
+// differently FROM EACH OTHER: writing one form everywhere keeps every
+// result reproducible from the source alone. This crate picks a * b + c
+// everywhere; see clippy.toml.
+#![allow(clippy::suboptimal_flops)]
+
 use crate::model_io::ModelArchive;
 use crate::ops::{ternary_matvec, TernaryWeight};
 use crate::quantize::quantize_to_ternary;
@@ -130,7 +139,7 @@ fn rms_norm(x: &[f32], weight: &[f32], eps: f32, out: &mut [f32]) {
     let n = x.len();
     let mut ss = 0.0f32;
     for &v in x {
-        ss = v.mul_add(v, ss);
+        ss += v * v;
     }
     let inv_rms = 1.0 / (ss / n as f32 + eps).sqrt();
     for i in 0..n {
@@ -140,19 +149,19 @@ fn rms_norm(x: &[f32], weight: &[f32], eps: f32, out: &mut [f32]) {
 
 fn apply_rope(vec: &mut [f32], position: usize, head_dim: usize, theta: f32) {
     for i in (0..head_dim).step_by(2) {
-        let freq = 1.0 / theta.powf(i as f32 / head_dim as f32);
+        let freq = 1.0 / alice_det_math::powf(theta, i as f32 / head_dim as f32);
         let angle = position as f32 * freq;
-        let (sin_val, cos_val) = angle.sin_cos();
+        let (sin_val, cos_val) = alice_det_math::sin_cos(angle);
         let x0 = vec[i];
         let x1 = vec[i + 1];
-        vec[i] = x1.mul_add(-sin_val, x0 * cos_val);
-        vec[i + 1] = x1.mul_add(cos_val, x0 * sin_val);
+        vec[i] = x1 * -sin_val + x0 * cos_val;
+        vec[i + 1] = x1 * cos_val + x0 * sin_val;
     }
 }
 
 #[inline]
 fn silu(x: f32) -> f32 {
-    x / (1.0 + (-x).exp())
+    x / (1.0 + alice_det_math::exp(-x))
 }
 
 // ─── Ternary model ──────────────────────────────────────────────────────────
@@ -565,7 +574,7 @@ impl Llama3TernaryModel {
                     let k_start = kv_h * c.head_dim;
                     let mut score = 0.0f32;
                     for d in 0..c.head_dim {
-                        score = q_head[d].mul_add(k_cached[k_start + d], score);
+                        score += q_head[d] * k_cached[k_start + d];
                     }
                     scores.push(score / (c.head_dim as f32).sqrt());
                 }
@@ -574,7 +583,7 @@ impl Llama3TernaryModel {
                 let max_s = scores.iter().copied().fold(f32::NEG_INFINITY, f32::max);
                 let mut sum = 0.0f32;
                 for s in &mut scores {
-                    *s = (*s - max_s).exp();
+                    *s = alice_det_math::exp(*s - max_s);
                     sum += *s;
                 }
                 if sum > 0.0 {
@@ -586,8 +595,7 @@ impl Llama3TernaryModel {
                 for (score, v_cached) in scores.iter().zip(&self.kv_cache.values[layer_idx]) {
                     let v_start = kv_h * c.head_dim;
                     for d in 0..c.head_dim {
-                        attn_out[q_start + d] =
-                            score.mul_add(v_cached[v_start + d], attn_out[q_start + d]);
+                        attn_out[q_start + d] += score * v_cached[v_start + d];
                     }
                 }
             }

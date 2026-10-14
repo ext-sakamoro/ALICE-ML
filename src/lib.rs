@@ -19,13 +19,27 @@
 //! ternary_matvec(input, weights, output)  // add/sub only, zero allocation
 //! ```
 //!
-//! # Features
+//! # Highlights
 //!
 //! - **1.58-bit Weights**: Ternary {-1, 0, +1} packed 4 per byte
 //! - **Zero Allocation**: All buffers from Arena, DPS everywhere
 //! - **AVX2 SIMD**: 8 floats per cycle with branchless masking
 //! - **INT8 Activations**: Optional quantized path for maximum throughput
-//! - **No Dependencies**: Pure Rust, `no_std` compatible
+//! - **`no_std` compatible**: builds without `std` for bare-metal/embedded targets
+//!
+//! # Cargo Features
+//!
+//! <!-- readme-sync: features -->
+//! | Feature | Enables |
+//! |---|---|
+//! | `std` (default) | `f32`/`f64` inherent methods; off for `no_std` |
+//! | `ffi` | The C-ABI surface (`src/ffi.rs`) |
+//! | `simd` | Hand-tuned AVX2 kernels (`x86_64`) |
+//! | `neon` | Hand-tuned NEON kernels (`aarch64`) |
+//! | `parallel` | Rayon-parallel batched matmul |
+//! | `pyo3` | Python bindings (`src/python.rs`) |
+//! | `db` | ALICE-DB-backed training metric persistence |
+//! | `safetensors` | Safetensors parsing + Llama-3 ternary inference |
 //!
 //! # Example
 //!

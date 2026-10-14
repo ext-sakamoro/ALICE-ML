@@ -1136,7 +1136,11 @@ mod tests {
         let n_in = 40;
         let n_out = 3;
         let values: Vec<i8> = (0..n_in * n_out).map(|i| (i as i8 % 3) - 1).collect();
-        let input: Vec<f32> = (0..n_in).map(|i| (i as f32).mul_add(0.1, -2.0)).collect();
+        #[allow(
+            clippy::suboptimal_flops,
+            reason = "test fixture values, not a determinism-sensitive path"
+        )]
+        let input: Vec<f32> = (0..n_in).map(|i| (i as f32) * 0.1 - 2.0).collect();
 
         let kernel = TernaryWeightKernel::from_ternary(&values, n_out, n_in);
 

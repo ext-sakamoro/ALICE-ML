@@ -41,6 +41,15 @@
 //!
 //! Author: Moroya Sakamoto
 
+// `a * b + c` (two roundings) is kept instead of clippy's mul_add suggestion
+// (one rounding) on purpose: both forms are individually bit-exact across
+// platforms (mul_add is specified, single-rounding IEEE 754 fusedMultiplyAdd
+// everywhere, not FMA-hardware-dependent), but the two forms round
+// differently FROM EACH OTHER: writing one form everywhere keeps every
+// result reproducible from the source alone. This crate picks a * b + c
+// everywhere; see clippy.toml.
+#![allow(clippy::suboptimal_flops)]
+
 #[cfg(not(feature = "std"))]
 use crate::math::FloatExt;
 #[cfg(not(feature = "std"))]
@@ -162,7 +171,15 @@ impl CumulativeQuantError {
         if has_residual {
             // Residual: σ_combined = sqrt(σ_main² + σ_skip²)
             // Approximate skip as carrying the same σ_act level.
-            self.sigma_act = sigma_out.hypot(self.sigma_act);
+            //
+            // alice_det_math 0.5 has no 64-bit hypot, so this is the textbook
+            // sqrt(a^2 + b^2) form built from its sqrt64 (no mul_add, no
+            // platform libm). Unlike a true hypot it does not pre-scale to
+            // dodge intermediate overflow/underflow, which is an accepted
+            // trade-off here: sigma values are relative-error magnitudes
+            // (O(1), far from f64's overflow range).
+            self.sigma_act =
+                alice_det_math::sqrt64(sigma_out * sigma_out + self.sigma_act * self.sigma_act);
         } else {
             self.sigma_act = sigma_out;
         }
@@ -312,7 +329,7 @@ pub fn compute_layer_error_propagation(layers: &[LayerConfig]) -> NetworkErrorRe
 
     // Geometric-mean per-layer error: (Π(1 + ε_i))^{1/n} - 1
     let geometric_mean_error = if num_layers > 0 {
-        state.error_product.powf(1.0 / num_layers as f64) - 1.0
+        alice_det_math::powf64(state.error_product, 1.0 / num_layers as f64) - 1.0
     } else {
         0.0
     };
@@ -342,6 +359,14 @@ mod tests {
     fn expected_local_error() -> f64 {
         (1.0 - 2.0 / core::f64::consts::PI).sqrt()
         // ≈ 0.6034 for pure ternary, no sparsity
+    }
+
+    /// `base.powi(n)` without calling the banned `f64::powi` (no f64
+    /// `alice_det_math::powi` exists yet, and this is test-only arithmetic
+    /// for an expected value, not a determinism-sensitive path): plain
+    /// repeated multiplication, which is not a disallowed method.
+    fn pow_by_repeated_mul(base: f64, n: u32) -> f64 {
+        (0..n).fold(1.0, |acc, _| acc * base)
     }
 
     // ------------------------------------------------------------------
@@ -443,7 +468,7 @@ mod tests {
 
         // Each layer has the same ε; total = (1+ε)^10 - 1
         let epsilon = expected_local_error();
-        let expected_total = (1.0 + epsilon).powi(10) - 1.0;
+        let expected_total = pow_by_repeated_mul(1.0 + epsilon, 10) - 1.0;
 
         assert!(
             (report.total_error - expected_total).abs() < 1e-9,
@@ -541,7 +566,7 @@ mod tests {
 
         // Verify the formula: total = (1+ε)^100 - 1
         let epsilon = expected_local_error();
-        let expected = (1.0 + epsilon).powi(100) - 1.0;
+        let expected = pow_by_repeated_mul(1.0 + epsilon, 100) - 1.0;
         let rel_diff = (report.total_error - expected).abs() / expected;
         assert!(
             rel_diff < 1e-6,

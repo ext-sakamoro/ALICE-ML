@@ -39,9 +39,9 @@
 //! quantity itself stops being meaningful
 
 // `a * b + c` は 2 回丸めのまま置く clippy は `mul_add` を勧めてくるが、
-// それは FMA のある target でだけ 1 回丸めになり、同じ logits から違う校正値が
-// 出る この module が det_math を使っているのと同じ理由で従わない
-// (feedback_mul_add_breaks_bit_exactness)
+// `mul_add` (1 回丸め) は個別には drift しない (FMA 命令の有無に関わらず
+// platform を跨いで bit 一致) それでも `a * b + c` とは違う bit を返すため、
+// 1 つの書き方に揃えて、どの結果も source だけから再現できるようにする
 #![allow(clippy::suboptimal_flops)]
 
 #[cfg(not(feature = "std"))]

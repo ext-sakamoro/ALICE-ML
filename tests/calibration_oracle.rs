@@ -16,6 +16,12 @@
 
 #![allow(clippy::float_cmp)] // dyadic fractions are compared exactly on purpose
 #![allow(clippy::cast_precision_loss)] // small counts → f32 / f64 (tests/analytic_oracle.rs と同じ慣行)
+#![allow(
+    clippy::disallowed_methods,
+    reason = "oracle: computes the independent closed-form reference value directly via std math, \
+    compared within a single run, not for cross-platform bit-identity (that is what the production \
+    path's alice_det_math routing is for)"
+)]
 
 use alice_ml::calibration::{
     brier_binary, brier_multiclass, negative_log_likelihood, CalibrationError, IsotonicRegression,
