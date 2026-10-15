@@ -4,7 +4,12 @@ All notable changes to ALICE-ML will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- `db` feature: `alice-db` の要求を `0.4` から `0.5` に変更 (`fs` feature は従来どおり有効) `src/db_bridge.rs` の変更は無い rkyv 0.7 (RUSTSEC-2026-0235) には alice-db 経由でのみ到達し、その ignore の前提を `scripts/no_direct_rkyv.py` が CI で検査する
+- `deny.toml`: pyo3 0.29 で解消済の RUSTSEC-2026-0176 / RUSTSEC-2026-0177 の ignore を削除
+
 ### Added
+- CI: `no-direct-rkyv` guard (この crate が rkyv に直接依存せず archive もしないことを検査)
 - **`alice-law-conformance.toml` を追加**: ALICE-Law の 14 gate (G1 から G14) それぞれについて、この repository を実測した状態を宣言する manifest 現時点で `pass` は 0 件 (`fail-known` 10 / `unverified` 4)、`pass` に届かない理由は G1 が pyo3 feature を CI の clippy で lint していないこと (src/python.rs に追加した禁止 method は既存の CI 全 job で通過し、`--features pyo3` の clippy のみが検出) と、canary / release leg / 固定 bit pattern の golden / semantics identifier が未整備なこと
 
 ### Fixed
