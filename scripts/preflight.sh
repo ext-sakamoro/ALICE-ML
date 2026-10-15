@@ -69,6 +69,12 @@ step "ci.yml / feature-powerset: Powerset (std + {ffi, simd, parallel, safetenso
 step "ci.yml / fmt: run"
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo fmt -- --check )
 
+step "ci.yml / fmt: no-direct-rkyv guard (tests)"
+python3 scripts/test_no_direct_rkyv.py
+
+step "ci.yml / fmt: no-direct-rkyv guard"
+python3 scripts/no_direct_rkyv.py
+
 step "ci.yml / doc: Doc (full native feature set)"
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db" RUSTDOCFLAGS="-Dwarnings"; cargo doc --no-deps --features "$NATIVE_FEATURES" )
 
@@ -186,7 +192,12 @@ step "ci.yml / neon: Test (neon)"
 step "security-audit.yml / audit: Run cargo audit"
 (
   export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
-  # RUSTSEC-2026-0235 (rkyv 0.7 Rc/Arc): alice-db 経由 transitive、archived 型に Rc/Arc 無し = 非該当
+  # RUSTSEC-2026-0235 (rkyv 0.7 Rc/Arc archive validation): rkyv is reached only
+  # through alice-db (db feature), whose archived types (SegmentMetadata / DataSegment /
+  # ModelType / DataType) hold no Rc / Arc, so the advisory does not apply. This crate
+  # neither depends on rkyv nor archives anything; scripts/no_direct_rkyv.py fails as soon
+  # as either changes. The root fix is alice-db moving off rkyv 0.7 (pending); the entry
+  # goes when that release is consumed.
   # (pyo3 0.29 / tokenizers 0.23 bump で 2025-0020 / 2026-0176 / 2026-0177 / number_prefix は解消済)
   cargo audit --deny yanked \
     --ignore RUSTSEC-2024-0436 \
