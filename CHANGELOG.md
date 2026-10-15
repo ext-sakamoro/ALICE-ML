@@ -5,7 +5,7 @@ All notable changes to ALICE-ML will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **`alice-law-conformance.toml` を追加**: ALICE-Law の 14 gate (G1 から G14) それぞれについて、この repository を実測した状態を宣言する manifest 現時点で `pass` は 0 件 (`fail-known` 9 / `unverified` 5)、`pass` に届かない理由は G1 が pyo3 feature を CI の clippy で lint していないこと (src/python.rs に追加した禁止 method は既存の CI 全 job で通過し、`--features pyo3` の clippy のみが検出) と、canary / release leg / 固定 bit pattern の golden / semantics identifier が未整備なこと
+- **`alice-law-conformance.toml` を追加**: ALICE-Law の 14 gate (G1 から G14) それぞれについて、この repository を実測した状態を宣言する manifest 現時点で `pass` は 0 件 (`fail-known` 10 / `unverified` 4)、`pass` に届かない理由は G1 が pyo3 feature を CI の clippy で lint していないこと (src/python.rs に追加した禁止 method は既存の CI 全 job で通過し、`--features pyo3` の clippy のみが検出) と、canary / release leg / 固定 bit pattern の golden / semantics identifier が未整備なこと
 
 ### Fixed
 - **`rust-version` を `1.98.1` から `1.87` に訂正**: 0.3.0 は開発用の toolchain pin の値をそのまま MSRV として宣言していたが、実測の下限は 1.87 (自 crate の `Vec::len` / `is_empty` の const 利用が 1.87 で安定化、`alice-db` / `alice-zip` の `rust-version` も 1.87、`alice-det-math` は 1.85) 1.92.0 / 1.90 / 1.88 / 1.87 で `cargo check --all-targets --all-features` が通り、1.86 / 1.85 は const fn の不安定機能で落ちる `rust-version` が過大だったため 1.98.1 未満の toolchain を使う下流 (path 依存の crate など) が `requires rustc 1.98.1` で build できなかった
