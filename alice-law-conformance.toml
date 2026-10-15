@@ -1,0 +1,111 @@
+# ALICE-Law conformance manifest for this crate (alice-ml). One entry per gate
+# defined in ALICE-Law's conformance/gates.toml; the schema (status / evidence /
+# mutant / since / note / reference_repo) is the "Manifest" section of
+# docs/CONFORMANCE.md in that repository.
+#
+# Every entry is written from what this repository's tree at the commit below
+# shows, checked directly: the CI clippy commands run locally on a fresh clone
+# (default features, the full native feature set, the native set with neon, and
+# pyo3), cargo test --lib --tests in debug and release, scripts/check_g1_banned_list.py
+# and its tests, ALICE-Law's public_text_check.py, and probe functions added to
+# library source and then reverted (the probes are quoted in the notes with the
+# exit code each CI command gave).
+#
+# No cell is `pass`. The one gate this crate has wired (G1: clippy.toml, the
+# pinned list check, the list test) has a gap that the hole rule makes visible:
+# no CI job lints the pyo3 feature, so a banned call in src/python.rs is read by
+# no layer. `fail-known` says where the requirement is unmet. `unverified` says
+# what could not be decided and why.
+#
+# Checked at: c90d3b8 (origin/main, 2026-10-15), probes run on aarch64 macOS with
+# rustc 1.98.1 (the rust-toolchain.toml pin); the x86_64-only code (the AVX2 kernel
+# under the simd feature) was not run locally and is covered only by the CI
+# ubuntu-latest clippy jobs.
+
+[G1]
+status = "unverified"
+note = "layers that read: clippy.toml bans all 25 of G1's banned methods for f32 and f64 (plus powi and mul_add for both widths, and the reasons are in the file; tests/g1_disallowed_methods_complete.rs and scripts/check_g1_banned_list.py, CI job law-g1-banned-list at ci.yml:180, compare the list against the revision pinned in .github/law-g1-pin; the check printed `ok: clippy.toml bans all 25 of G1's banned methods for both widths`), and the CI clippy commands run `-D warnings` (so clippy::disallowed_methods is an error) at ci.yml:87 (default features, all targets), ci.yml:89 (full native feature set ffi,simd,parallel,safetensors,db, all targets, pedantic and nursery), ci.yml:51 (native set plus neon, on macos-latest) and the no_std rlib clippy step. Measured 2026-10-15 by adding `x.sin()` to a library file and reverting: src/math.rs under the ci.yml:87 command rc=101 `use of a disallowed method f32::sin`; src/lib.rs under ci.yml:87 rc=101; src/safetensors.rs (feature-gated) under ci.yml:87 rc=0 (not built there) and under ci.yml:89 rc=101; src/db_bridge.rs (db) under ci.yml:89 rc=101; src/neon.rs under ci.yml:51 rc=101 and under ci.yml:89 rc=0 (neon is built only by the neon job). Not read by any layer: the pyo3 feature. NATIVE_FEATURES (ci.yml:23) leaves out pyo3 and neon on purpose, neon has its own job, pyo3 has none: an `x.sin()` added to src/python.rs passed ci.yml:87, ci.yml:89 and ci.yml:51 (rc=0 each) and was caught only by `cargo clippy --lib --features pyo3 -- -D warnings` (rc=101), a command no workflow runs. Today's src/python.rs has no banned call (that same pyo3 clippy command on the unmodified tree: rc=0), so this is an unlinted form, not a located violation. Also absent: the canary test the gate names (a test or CI step that injects a direct call and checks the lint fires; the checks that exist cover the list, not the lint). Mutant measured on the list layer: removing the `f32::sin` entry from clippy.toml turns tests/g1_disallowed_methods_complete.rs::clippy_toml_bans_every_g1_method_for_both_widths red (`missing 1 of G1's 25 banned methods: ['f32::sin']`) and scripts/check_g1_banned_list.py exit non-zero. Module-level `#[allow(clippy::disallowed_methods, reason = ...)]` exists in four test-only places (src/quantize.rs:408 and src/tensor.rs:992 inside #[cfg(test)] modules, benches/matmul.rs:11, tests/analytic_oracle.rs:20, tests/calibration_oracle.rs:20), each with a reason; none in library code. The cell moves to pass when a CI job lints the pyo3 feature and a canary lands."
+
+[G2]
+status = "fail-known"
+note = "no Law helper for max/min, no default-deny manifest of raw_* exceptions, and no clippy ban on f32::max / f32::min / f64::max / f64::min (clippy.toml lists none of them). The library computes f32/f64 max and min directly at: src/tensor.rs:336 and :561 (softmax row max, fold with f32::max), :448-454 and :494-500 (reduce max / min), :802-803; src/quantize.rs:121, :136-137, :200-201, :215-216, :270, :284-285, :361; src/training.rs:79; src/llama3_ternary.rs:583; src/calibration.rs:195 and :424 (the MIN_PROBABILITY floor in front of alice_det_math::ln64); src/ffi.rs:604, :617, :633, :648, :664; src/python.rs:388, :402, :441, :449; also f32::clamp (not named by the gate, same platform-visible NaN and signed-zero handling) at src/quantize.rs:141, :220, src/moe.rs:213, src/tensor.rs:528, :810. Probe measured 2026-10-15 and reverted: `pub const fn alice_probe(x: f32) -> f32 { x.max(0.5) }` in src/math.rs passed the ci.yml:87 command (rc=0) and `f32::min(x, 0.5)` passed the ci.yml:89 command (rc=0), so a new site would turn nothing red. SIMD widths: the crate builds an AVX2 kernel (feature simd, x86_64) and a NEON kernel (feature neon, src/neon.rs); a grep of src/ops.rs and src/neon.rs for _mm256_max / _mm256_min / vmax / vmin / .max( / .min( found only the usize call at src/ops.rs:463 and :509, so neither width computes a float max or min today and the per-width test list is empty; that is an audit of the tree, not a gate."
+
+[G3]
+status = "unverified"
+note = "no syntax-tree checker for an outer negation of an fma exists (scripts/ holds check_g1_banned_list.py, check_msrv.py and readme_sync.py only), which the gate names as its mechanism. What stands in its place is stricter and is itself a layer: clippy.toml bans f32::mul_add and f64::mul_add outright, and src, tests, examples and benches contain no mul_add call (grep over those directories: only comments, src/math.rs:15, src/ffi.rs:2, src/quantize.rs:8, src/llama3_ternary.rs:11, src/tensor.rs:7). Measured 2026-10-15 and reverted, each under the ci.yml:87 command: `-(x.mul_add(2.0, 1.0))` rc=101 `use of a disallowed method f32::mul_add`; `-1.0 * f32::mul_add(x, 2.0, 1.0)` rc=101; the same negated fma inside a macro_rules! definition used once, rc=101 (clippy reads the expansion). Not read: src/python.rs under the pyo3 feature (see G1): the same `-(x.mul_add(2.0, 1.0))` added to src/python.rs passed the ci.yml:89 command (rc=0). So the claim holds for the feature sets CI lints, by a ban rather than by the named checker, and the pyo3 feature is a checker hole. The dynamic backstop (G4 cancellation goldens on an aarch64 release leg) is absent (see G4, G5)."
+
+[G4]
+status = "fail-known"
+note = "no signed-zero or exact-cancellation golden exists: tests/ holds tests/analytic_oracle.rs (closed-form comparisons), tests/calibration_oracle.rs (tolerance comparisons against analytic values) and tests/g1_disallowed_methods_complete.rs (the lint list), none of which fixes an expected bit pattern for a signed-zero or exact-cancellation case. The only bit-level assertions are the f16 and bf16 to f32 conversion cases in tests/analytic_oracle.rs (e.g. the 0x8000 to -0.0 case compared with to_bits at about line 1191), which test a format conversion, not a Law site. CI runs the tests in debug only: ci.yml:33, :35, :37 (`cargo test --lib --tests` on ubuntu-latest, x86_64) and ci.yml:53 (neon, macos-latest, aarch64); no workflow has `--release` for a test (grep over .github/workflows: the only `release` tokens are `cargo semver-checks check-release` in security-audit.yml:245 and the msrv job's empty RUSTFLAGS), so the {debug, release} x {x86_64, aarch64} legs are not present as required jobs. Measured 2026-10-15: the suite passes in both profiles on aarch64 (`cargo test --lib --tests` and `cargo test --release --lib --tests`: 217 + 24 + 30 + 3 passed, 0 failed), so adding the release legs does not start from a red suite."
+
+[G5]
+status = "fail-known"
+note = "no CI job runs the test suite under the release profile, on aarch64 or anywhere: the test job (ci.yml:26-37) runs `cargo test --lib --tests` three times in debug on ubuntu-latest, the neon job (ci.yml:41-53) runs it in debug on macos-latest (aarch64), and no step passes --release to cargo test (see G4 for the grep). The required aarch64 release leg, the one that executes a hardware fma instruction, does not exist."
+
+[G6]
+status = "fail-known"
+note = "the crate exports no semantics identifier: src/lib.rs has no SEMANTICS_ID or equivalent (grep for SEMANTICS_ID and semantics over src and tests: 0), so there is no hex test and no pin-change test. The upstream identifier it would fold exists: alice-det-math 0.5.1 (Cargo.lock) exports SEMANTICS_ID at its src/lib.rs:148, and this crate calls into it for exp / ln / log2 / log10 / powf / powi / sin_cos / sqrt64 and the 64-bit exp, ln and powf (31 uses of alice_det_math in src), but does not re-export, fold or pin it. Whether this crate's float outputs are Law-bearing in the sense of docs/CONFORMANCE.md (its Out of scope section names ML float activations and inference numerics as outside) is a decision for the owner; calibration (src/calibration.rs) and the ternary quantisation scale are the candidates, because they feed alice_det_math functions and are stored or compared."
+
+[G7]
+status = "unverified"
+note = "audit, not decided. The crate's type-erasing boundaries: 67 `extern \"C\" fn` in src/ffi.rs (feature ffi; the arena, tensor, weight and model entry points, each wrapped by `guarded` at src/ffi.rs:77), 13 #[pyfunction] exports in src/python.rs (feature pyo3), the byte readers ModelArchive::deserialize (src/model_io.rs:114), StreamingModel::from_bytes (src/streaming.rs:160) and SafetensorsFile::parse (src/safetensors.rs:349), and the optional alice-db sink (src/db_bridge.rs, feature db); there is no build.rs, no procedural macro and no dyn Any or name-keyed registry. None of them is seen to receive another Law-bearing crate's value (the FFI and Python entry points take raw f32 slices and weight handles; the alice-det-math calls are in-memory function calls that return plain f32 / f64), but that is read from the code, not produced by a scanner, and the question depends on G6, since without an identifier there is nothing to carry. Not claimed as n/a: that status needs a scanner finding zero sites and the mutant of adding one, and none exists."
+
+[G8]
+status = "unverified"
+note = "undecided. Durable forms written: the ATML model archive (ModelArchive::serialize at src/model_io.rs:90, reached by LlamaTernary::save_atml at src/llama3_ternary.rs:637): header is the 4-byte magic `ATML`, a u32 FORMAT_VERSION (src/model_io.rs:92-93), the layer count, then per layer a name hash, shapes, an f32 scale and the packed ternary weights; there is no semantics identifier field, and ModelArchive::deserialize (src/model_io.rs:114-123) rejects only a wrong magic or version (returns None), not an identifier mismatch. The optional ALICE-DB sink (src/db_bridge.rs, feature db) persists training metrics through the alice-db store, whose own format carries its own identifier. Whether the ATML scale and packed weights are Law-bearing values is the open question: the scale is a mean of absolute values computed with IEEE basic operations (src/quantize.rs:121), not an alice_det_math result, so the stored bytes do not depend on the arithmetic identifier today; a change of the format to carry one would be a format change. The list of write entry points is the evidence the gate wants and its completeness is audited, not scanned."
+
+[G9]
+status = "unverified"
+note = "depends on G6 and G8: the crate has no identifier whose history could be audited. CHANGELOG.md records no identifier move; the only format version is FORMAT_VERSION = 1 of the ATML archive (src/model_io.rs:15) and it has not moved."
+
+[G10]
+status = "fail-known"
+note = "no lint or scan bans run-varying sources: clippy.toml holds disallowed-methods only (no disallowed-types, nothing for SystemTime::now, Instant::now, Uuid, thread_rng or from_entropy) and no workflow or script scans for them. Today's src reads none of them: a grep of src for SystemTime, Instant, std::time, thread_rng, rand::, Uuid, from_entropy and RandomState finds nothing (rand is a dev-dependency used by tests and benches only, Cargo.toml). That is a one-off grep, not a gate: probes added to src/math.rs and reverted, `std::time::SystemTime::now()` under the ci.yml:87 command and `std::time::Instant::now()` under the ci.yml:89 command, both passed (rc=0)."
+
+[G11]
+status = "fail-known"
+note = "the checks that exist are of the G1 list only: tests/g1_disallowed_methods_complete.rs::g1_banned_list_is_not_itself_empty and the exit-2-on-empty-list behaviour of scripts/check_g1_banned_list.py (tested by scripts/test_check_g1_banned_list.py, run in ci.yml:180 job law-g1-banned-list) are the zero-compared failure for that list. Missing: (a) the canary the gate names for the lint itself, a test or step that injects a banned call and expects clippy::disallowed_methods to fire (the injection was done by hand for this manifest, not committed); (c) a byte-identity check for scripts/check_g1_banned_list.py, which its own docstring describes as the same shape other crates use. No checker exists for G2, G3, G4, G5, G10, G12 or G14, so no canary or zero-compared test can exist for them yet."
+
+[G12]
+status = "fail-known"
+note = "no CI job runs ALICE-Law's scripts/public_text_check.py: .github/workflows/ holds ci.yml, fuzz.yml, quality-deep.yml and security-audit.yml, none of which fetches or carries the script, and there is no revision pin file for it (.github/ holds law-g1-pin for the G1 list only). Run once by hand at origin/main c90d3b8 (ALICE-Law d46d94e, `public_text_check.py --tree origin/main`): `44 findings in 400 files` (rc=1): 16 internal note, 11 private name, 9 note link, 4 private path, 4 device, in .github/workflows/*.yml, scripts/preflight.sh, .gitignore, fuzz/, examples/qwen_qat_test.rs, src/micro_model.rs, src/neon.rs, src/llama3_ternary.rs, so adding the job needs those 44 lines changed first (or allow-listed by the script's own rules)."
+
+[G13]
+status = "unverified"
+note = "audit, no lint or allowlist exists. HashMap in src: src/safetensors.rs:7 (a BTreeMap under no_std at :10), the tensor table parsed at src/safetensors.rs:307 and exposed by SafetensorsFile::tensor_names (src/safetensors.rs:373-377, `self.tensors.keys()` collected into a Vec in map order, so the order differs between runs); its callers are tests only (src/safetensors.rs:594 and tests/analytic_oracle.rs:1145, which sort first). src/llama3_ternary.rs:329 takes a HashMap of scales and reads it by key (`get`, line 350), not by iteration. Parallel reduction: the only rayon use is src/ops.rs:415-422 (feature parallel), `par_chunks_mut(...).zip(par_chunks(...)).for_each` writing one output row per chunk, with no cross-thread float reduction, so the result does not depend on thread count; no test runs it at two thread counts. No Law-bearing float output reads an unspecified order today, and tensor_names is the one public API that returns one. Not pass: no lint bans HashMap or HashSet iteration (probe `m.values().copied().collect()` on a HashMap in src/math.rs passed the ci.yml:87 command, rc=0) and no ordered-reduction test exists; not n/a: that needs a scanner."
+
+[G14]
+status = "fail-known"
+note = "the build configuration sets no fast-math-style flag and no target-cpu=native today: there is no .cargo/config*.toml (.cargo/ holds mutants.toml only), no build.rs, the CI RUSTFLAGS are `-Dwarnings` (ci.yml:21) and an empty string in the msrv job (ci.yml:112), and Cargo.toml [profile.release] and [profile.bench] set opt-level, lto and codegen-units only (Cargo.toml:61-75); a grep of the tree for target-cpu, fast-math, ffast, unsafe-fp, target-feature, fadd_fast and fmul_fast finds only the documentation comment at src/ops.rs:770-771, which tells a user that the AVX2 kernel is selected by `-C target-feature=+avx2` or `-C target-cpu=native` (a user build option, not set by the crate). Unmet: no scan step in CI keeps the configuration that way, and neither test the gate names exists: no test asserts round-to-nearest-even and none asserts that subnormals are not flushed to zero (grep for MIN_POSITIVE, is_subnormal, round_ties_even and set_rounding over src and tests: none; the f16 and bf16 subnormal cases in tests/analytic_oracle.rs convert to normal f32 values and do not exercise f32 subnormals)."
+
+[features.std]
+guarantee = "outside"
+note = "default feature; the crate declares no guarantee for it: G6, G8 and the goldens of G4 are absent (see those gates), so no inside claim is made"
+
+[features.ffi]
+guarantee = "outside"
+note = "C ABI entry points (67 extern \"C\" fn); not covered by a Law gate beyond the G1 lint, and not exercised by an end to end check or an external-reference oracle"
+
+[features.simd]
+guarantee = "outside"
+note = "AVX2 kernel on x86_64; no signed-zero or cancellation golden holds on every architecture (G4), the x86_64 code is linted only by the CI ubuntu-latest clippy jobs"
+
+[features.neon]
+guarantee = "outside"
+note = "NEON kernel on aarch64; no golden compares its bits with the scalar path across architectures (G4)"
+
+[features.parallel]
+guarantee = "outside"
+note = "rayon over output rows (src/ops.rs:415); no test at two thread counts (G13), no G4 golden"
+
+[features.pyo3]
+guarantee = "outside"
+note = "no CI job lints or builds it under the Law gates (G1 hole: ci.yml:23 NATIVE_FEATURES excludes it)"
+
+[features.db]
+guarantee = "outside"
+note = "ALICE-DB metrics sink; the persisted form is the store's, the crate adds no identifier (G8)"
+
+[features.safetensors]
+guarantee = "outside"
+note = "safetensors parser and Llama-3 ternary path; no Law gate beyond the G1 lint, no golden (G4)"
