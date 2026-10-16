@@ -1,7 +1,7 @@
 name: CI
 
-# canonical CI template: [[reference_alice_ci_canonical_template]] 手順 4.5 / 4.6
-# 2026-09-15 強化 (罠 #25-27 / #29 遡及):
+# ALICE-* crate で共通の CI 構成
+# 2026-09-15 強化:
 # - clippy を `--all-targets` + full native feature set で `-D warnings` (feature-gated module
 #   ffi / safetensors / llama3_ternary が従来は未 lint、38 件が silent だった)
 # - no_std job: `crate-type = ["rlib", "staticlib", "cdylib"]` のため `cargo check --no-default-features`

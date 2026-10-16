@@ -690,7 +690,7 @@ mod tests {
         let total_params: usize = 70_000_000_000;
         let ternary_bytes = total_params / 4;
         let gb = ternary_bytes as f64 / 1e9;
-        // Should fit in 32GB Mac Mini
+        // Should fit in a 32 GB machine
         assert!(gb < 20.0, "70B ternary estimate: {gb:.2} GB");
     }
 

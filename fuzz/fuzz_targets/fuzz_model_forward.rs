@@ -7,7 +7,7 @@
 //!
 //! を全て有限時間で panic なく完了することを保証する
 //!
-//! canonical CI template [[reference_alice_ci_canonical_template]] 準拠
+//! ALICE-* crate で共通の fuzz 構成
 //!
 //! Note: alice-ml lib.rs は現状 empty のため、defensive stub として arbitrary f32 列を
 //! finite filter + matmul 相当の演算のみ実施。実 model forward API が導入されたら

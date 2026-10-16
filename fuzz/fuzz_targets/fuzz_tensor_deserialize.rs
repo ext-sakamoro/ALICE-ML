@@ -7,7 +7,7 @@
 //!
 //! を全て有限時間で panic なく完了することを保証する
 //!
-//! canonical CI template [[reference_alice_ci_canonical_template]] 準拠
+//! ALICE-* crate で共通の fuzz 構成
 //!
 //! Note: alice-ml lib.rs は現状 empty のため、defensive stub として arbitrary bytes を
 //! shape 解釈 + bounds check のみ実施。実 public API (tensor deserialize) が導入されたら

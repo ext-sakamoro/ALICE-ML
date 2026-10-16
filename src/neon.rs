@@ -1,6 +1,6 @@
 //! ARM NEON 4-wide Ternary Matvec Kernel
 //!
-//! Mirror of the AVX2 kernel in `ops::simd` for ARM Cortex-A76 (Raspberry Pi 5).
+//! Mirror of the AVX2 kernel in `ops::simd` for ARM Cortex-A76.
 //! Processes 4 floats per cycle using NEON 128-bit SIMD.
 //!
 //! Author: Moroya Sakamoto

@@ -54,7 +54,7 @@ pub struct CacheBudget {
 }
 
 impl CacheBudget {
-    /// Raspberry Pi 5 L2 キャッシュ (512 KB per core, Cortex-A76)。
+    /// Arm Cortex-A76 の L2 キャッシュ (512 KB per core)。
     #[must_use]
     pub const fn l2_rpi5() -> Self {
         Self {
@@ -63,7 +63,7 @@ impl CacheBudget {
         }
     }
 
-    /// Raspberry Pi 5 L2 × 2 コア分 (1 MB)。
+    /// Arm Cortex-A76 の L2 × 2 コア分 (1 MB)。
     #[must_use]
     pub const fn l2_rpi5_dual() -> Self {
         Self {

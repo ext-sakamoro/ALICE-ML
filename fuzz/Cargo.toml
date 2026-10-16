@@ -14,7 +14,7 @@ arbitrary = { version = "1", features = ["derive"] }
 [dependencies.alice-ml]
 path = ".."
 
-# cargo-machete false-positive 予防 (canonical [[reference_alice_ci_canonical_template]] 罠 #3)
+# cargo-machete false-positive 予防
 # libfuzzer-sys / arbitrary は fuzz_target! macro 内でのみ参照されるため machete が誤検知
 # alice-ml lib は現状 empty (public API 未 export) だが CI template symmetry のため path dep 保持
 [package.metadata.cargo-machete]
