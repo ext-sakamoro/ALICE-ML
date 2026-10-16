@@ -62,6 +62,18 @@ step "ci.yml / clippy: Clippy (full native feature set, all targets, pedantic + 
 relint
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo clippy --features "$NATIVE_FEATURES" --all-targets -- -W clippy::pedantic -W clippy::nursery -D warnings )
 
+step "ci.yml / clippy: Clippy canary data (generator tests)"
+python3 scripts/test_gen_clippy_canary_calls.py
+
+step "ci.yml / clippy: Clippy canary data (generated from clippy.toml, no drift)"
+python3 scripts/gen_clippy_canary_calls.py --check
+
+step "ci.yml / clippy: Clippy canary (tests)"
+python3 scripts/test_clippy_canary.py
+
+step "ci.yml / clippy: Clippy canary (every planted banned call is flagged)"
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings"; python3 scripts/clippy_canary.py )
+
 step "ci.yml / feature-powerset: Powerset (std + {ffi, simd, parallel, safetensors} depth 2)"
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo hack check --lib --feature-powerset --depth 2 --exclude-features pyo3,neon --features std )
 
