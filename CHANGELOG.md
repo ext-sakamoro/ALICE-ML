@@ -14,6 +14,7 @@ All notable changes to ALICE-ML will be documented in this file.
 - CI: clippy の禁止一覧の canary (`scripts/clippy_canary.py`) を追加した 植える呼び出しの表 `scripts/clippy_canary_calls.tsv` は `scripts/gen_clippy_canary_calls.py` が `clippy.toml` から 1 entry 1 行で生成し、CI が再生成して byte で比べる この repo は 54 件 (`disallowed-methods` の f32 / f64 の method、すべて植える) `scripts/clippy_canary.py` / `scripts/test_clippy_canary.py` / `scripts/gen_clippy_canary_calls.py` / `scripts/test_gen_clippy_canary_calls.py` は ALICE-DB と同じ中身
 - 公開する文面の検査の指摘を直した (tree の指摘は 0 件) 式と公開 API は変えていない
 - **Breaking:** `CacheBudget` の L2 の 2 つの preset の名前を CPU 名の `CacheBudget::l2_cortex_a76` / `CacheBudget::l2_cortex_a76_dual` にし、`name` も `"L2-CortexA76"` / `"L2x2-CortexA76"` にした (値の 512 KB / 1 MB は同じ) 旧名の別名は置かない
+- CI: 公開する文面の検査の pin を ALICE-Law 779fa44 (checker sha256 e439fdd7…) に進めた `.public-text.toml` で CHANGELOG.md の 0.2.x の 2 行 (公開済みの API 名) を件数 2 で許し、doc comment の対象 CPU の書き方を Cortex-A76 に揃えた
 
 ### Added
 - CI: `no-direct-rkyv` guard (この crate が rkyv に直接依存せず archive もしないことを検査)

@@ -1,6 +1,6 @@
 //! Speculative Decoding — ドラフトモデルで先読みし検証モデルで一括検証。
 //!
-//! 帯域律速のエッジ環境（RasPi 5等）で、1.58bit ternary モデルの
+//! 帯域律速のエッジ環境（Cortex-A76 等）で、1.58bit ternary モデルの
 //! 推論スループットを 2〜3 倍に引き上げる。
 //!
 //! # アルゴリズム概要
@@ -378,7 +378,7 @@ impl SpeculativeDecoder {
 /// L2 キャッシュ常駐 Speculative Decoder。
 ///
 /// `MicroModel` (L2 常駐) をドラフトモデル、`BitLinear` 列を検証モデルとして使う。
-/// ドラフト推論は L2 帯域 (~100 GB/s on `RasPi 5`) で完結し、
+/// ドラフト推論は L2 帯域 (~100 GB/s on Cortex-A76) で完結し、
 /// DRAM 帯域 (17 GB/s) は検証モデルのバッチ実行 1 回のみ消費する。
 ///
 /// # Example
