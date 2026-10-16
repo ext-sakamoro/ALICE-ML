@@ -4,6 +4,9 @@ All notable changes to ALICE-ML will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- CI (ALICE-Law G14): 浮動小数点の結果を変える build の flag を静的と動的の 2 段で検査し、round-to-nearest-even と subnormal が flush されないことを実行時に確かめる (ALICE-DB と同一の `scripts/build_config_guard.py` / `scripts/build_flags_check.py` / `tests/float_environment.rs` と test、`scripts/run_tests.sh` / `scripts/test_run_tests.py`) 新しい float-environment job (ubuntu / macOS / Windows) で test を debug と release で `scripts/run_tests.sh float_environment=2` を通して実行し (2 本とも通らなければ失敗)、静的な検査を走らせ、ubuntu / macOS では新しい target dir で cargo を `-v` で走らせて rustc に実際に渡った flag を読む (default / full native feature set / no_std rlib) 意図的な出現は `scripts/build_config_allowlist.toml` に理由付きで書く `alice-law-conformance.toml` の G14 を fail-known から pass にした
+
 ### Changed
 - `db` feature: `alice-db` の要求を `0.4` から `0.5` に変更 (`fs` feature は従来どおり有効) `src/db_bridge.rs` の変更は無い rkyv 0.7 (RUSTSEC-2026-0235) には alice-db 経由でのみ到達し、その ignore の前提を `scripts/no_direct_rkyv.py` が CI で検査する
 - `deny.toml`: pyo3 0.29 で解消済の RUSTSEC-2026-0176 / RUSTSEC-2026-0177 の ignore を削除
