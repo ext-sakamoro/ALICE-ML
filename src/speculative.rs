@@ -389,7 +389,7 @@ impl SpeculativeDecoder {
 /// use alice_ml::ops::TernaryWeightKernel;
 /// use alice_ml::layer::BitLinear;
 ///
-/// let draft = MicroModelBuilder::new(32, 32, CacheBudget::l2_rpi5())
+/// let draft = MicroModelBuilder::new(32, 32, CacheBudget::l2_cortex_a76())
 ///     .add_hidden(32)
 ///     .build_random(42);
 ///
@@ -824,7 +824,7 @@ mod tests {
 
         let draft_k = TernaryWeightKernel::from_ternary(&[1, -1, 0, 1], 2, 2);
         let draft_layer = BitLinear::new(draft_k, None, false);
-        let draft = MicroModel::new(vec![draft_layer], CacheBudget::l2_rpi5());
+        let draft = MicroModel::new(vec![draft_layer], CacheBudget::l2_cortex_a76());
 
         let verify_layer = make_layer(&[1, -1, 0, 1], 2, 2);
 
@@ -849,7 +849,7 @@ mod tests {
     fn test_cache_resident_decoder_draft_budget() {
         use crate::micro_model::{CacheBudget, MicroModelBuilder};
 
-        let draft = MicroModelBuilder::new(32, 32, CacheBudget::l2_rpi5())
+        let draft = MicroModelBuilder::new(32, 32, CacheBudget::l2_cortex_a76())
             .add_hidden(32)
             .build_random(42);
 
@@ -876,7 +876,7 @@ mod tests {
         let dk = TernaryWeightKernel::from_ternary(&[1, -1, 0, 1], 2, 2);
         let draft = MicroModel::new(
             vec![BitLinear::new(dk, None, false)],
-            CacheBudget::l2_rpi5(),
+            CacheBudget::l2_cortex_a76(),
         );
 
         let verify_layer = make_layer(&[1, 0, -1, 1], 2, 2);
@@ -901,7 +901,7 @@ mod tests {
     fn test_cache_resident_decoder_max_speedup() {
         use crate::micro_model::{CacheBudget, MicroModelBuilder};
 
-        let draft = MicroModelBuilder::new(16, 16, CacheBudget::l2_rpi5()).build_random(1);
+        let draft = MicroModelBuilder::new(16, 16, CacheBudget::l2_cortex_a76()).build_random(1);
         let config = DecoderConfig {
             max_draft_tokens: 7,
             temperature: 1.0,
@@ -916,7 +916,7 @@ mod tests {
         use crate::micro_model::{CacheBudget, MicroModelBuilder};
 
         // 現実的サイズ: 512→256→512 ドラフト + 512→512 検証
-        let draft = MicroModelBuilder::new(512, 512, CacheBudget::l2_rpi5())
+        let draft = MicroModelBuilder::new(512, 512, CacheBudget::l2_cortex_a76())
             .add_hidden(256)
             .build_random(42);
 

@@ -18,7 +18,7 @@
 //! ```rust
 //! use alice_ml::micro_model::{MicroModel, MicroModelBuilder, CacheBudget};
 //!
-//! let budget = CacheBudget::l2_rpi5(); // 512 KB
+//! let budget = CacheBudget::l2_cortex_a76(); // 512 KB
 //!
 //! let model = MicroModelBuilder::new(64, 64, budget)
 //!     .add_hidden(64)
@@ -56,19 +56,19 @@ pub struct CacheBudget {
 impl CacheBudget {
     /// Arm Cortex-A76 の L2 キャッシュ (512 KB per core)。
     #[must_use]
-    pub const fn l2_rpi5() -> Self {
+    pub const fn l2_cortex_a76() -> Self {
         Self {
             max_bytes: 512 * 1024,
-            name: "L2-RasPi5",
+            name: "L2-CortexA76",
         }
     }
 
     /// Arm Cortex-A76 の L2 × 2 コア分 (1 MB)。
     #[must_use]
-    pub const fn l2_rpi5_dual() -> Self {
+    pub const fn l2_cortex_a76_dual() -> Self {
         Self {
             max_bytes: 1024 * 1024,
-            name: "L2x2-RasPi5",
+            name: "L2x2-CortexA76",
         }
     }
 
@@ -90,7 +90,7 @@ impl CacheBudget {
 
 impl Default for CacheBudget {
     fn default() -> Self {
-        Self::l2_rpi5()
+        Self::l2_cortex_a76()
     }
 }
 
@@ -405,15 +405,15 @@ mod tests {
     // ---- CacheBudget ----
 
     #[test]
-    fn test_budget_l2_rpi5() {
-        let b = CacheBudget::l2_rpi5();
+    fn test_budget_l2_cortex_a76() {
+        let b = CacheBudget::l2_cortex_a76();
         assert_eq!(b.max_bytes, 512 * 1024);
-        assert_eq!(b.name, "L2-RasPi5");
+        assert_eq!(b.name, "L2-CortexA76");
     }
 
     #[test]
     fn test_budget_dual() {
-        let b = CacheBudget::l2_rpi5_dual();
+        let b = CacheBudget::l2_cortex_a76_dual();
         assert_eq!(b.max_bytes, 1024 * 1024);
     }
 
@@ -440,7 +440,7 @@ mod tests {
 
     #[test]
     fn test_builder_estimate_memory() {
-        let builder = MicroModelBuilder::new(64, 64, CacheBudget::l2_rpi5()).add_hidden(64);
+        let builder = MicroModelBuilder::new(64, 64, CacheBudget::l2_cortex_a76()).add_hidden(64);
 
         let est = builder.estimate_memory();
         // 2 layers: 64→64 each
@@ -452,7 +452,7 @@ mod tests {
 
     #[test]
     fn test_builder_will_fit_true() {
-        let builder = MicroModelBuilder::new(64, 64, CacheBudget::l2_rpi5()).add_hidden(64);
+        let builder = MicroModelBuilder::new(64, 64, CacheBudget::l2_cortex_a76()).add_hidden(64);
 
         assert!(builder.will_fit(), "64→64→64 should fit in 512KB");
     }
@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn test_builder_build_random() {
-        let model = MicroModelBuilder::new(32, 32, CacheBudget::l2_rpi5())
+        let model = MicroModelBuilder::new(32, 32, CacheBudget::l2_cortex_a76())
             .add_hidden(32)
             .build_random(42);
 
@@ -479,7 +479,7 @@ mod tests {
 
     #[test]
     fn test_builder_with_pre_norm() {
-        let model = MicroModelBuilder::new(16, 16, CacheBudget::l2_rpi5())
+        let model = MicroModelBuilder::new(16, 16, CacheBudget::l2_cortex_a76())
             .with_pre_norm(true)
             .build_random(1);
 
@@ -492,7 +492,7 @@ mod tests {
     fn test_model_forward_single_layer() {
         let kernel = TernaryWeightKernel::from_ternary(&[1, -1, 0, 1], 2, 2);
         let layer = BitLinear::new(kernel, None, false);
-        let model = MicroModel::new(vec![layer], CacheBudget::l2_rpi5());
+        let model = MicroModel::new(vec![layer], CacheBudget::l2_cortex_a76());
 
         let input = [2.0f32, 3.0];
         let mut output = [0.0f32; 2];
@@ -509,7 +509,7 @@ mod tests {
         let k1 = TernaryWeightKernel::from_ternary(&[1, -1, 0, 1], 2, 2);
         let l0 = BitLinear::new(k0, None, false);
         let l1 = BitLinear::new(k1, None, false);
-        let model = MicroModel::new(vec![l0, l1], CacheBudget::l2_rpi5());
+        let model = MicroModel::new(vec![l0, l1], CacheBudget::l2_cortex_a76());
 
         let input = [1.0f32, 2.0];
         let mut output = [0.0f32; 2];
@@ -525,7 +525,7 @@ mod tests {
     fn test_model_predict_tokens() {
         let kernel = TernaryWeightKernel::from_ternary(&[1, -1, 0, 1], 2, 2);
         let layer = BitLinear::new(kernel, None, false);
-        let model = MicroModel::new(vec![layer], CacheBudget::l2_rpi5());
+        let model = MicroModel::new(vec![layer], CacheBudget::l2_cortex_a76());
 
         let input = [2.0f32, 3.0];
         let mut logits = vec![0.0f32; 2 * 3];
@@ -544,7 +544,7 @@ mod tests {
     #[test]
     fn test_model_fits_in_budget() {
         // 小さいモデル → 収まる
-        let model = MicroModelBuilder::new(16, 16, CacheBudget::l2_rpi5())
+        let model = MicroModelBuilder::new(16, 16, CacheBudget::l2_cortex_a76())
             .add_hidden(16)
             .build_random(1);
         assert!(model.fits_in_budget());
@@ -557,7 +557,7 @@ mod tests {
 
     #[test]
     fn test_model_budget_utilization() {
-        let model = MicroModelBuilder::new(64, 64, CacheBudget::l2_rpi5())
+        let model = MicroModelBuilder::new(64, 64, CacheBudget::l2_cortex_a76())
             .add_hidden(64)
             .build_random(42);
 
@@ -579,7 +579,7 @@ mod tests {
     #[test]
     fn test_model_param_count() {
         // 2 layers: 32→64, 64→16 → 32*64 + 64*16 = 2048 + 1024 = 3072
-        let model = MicroModelBuilder::new(32, 16, CacheBudget::l2_rpi5())
+        let model = MicroModelBuilder::new(32, 16, CacheBudget::l2_cortex_a76())
             .add_hidden(64)
             .build_random(1);
 
@@ -588,7 +588,7 @@ mod tests {
 
     #[test]
     fn test_model_depth() {
-        let model = MicroModelBuilder::new(16, 16, CacheBudget::l2_rpi5())
+        let model = MicroModelBuilder::new(16, 16, CacheBudget::l2_cortex_a76())
             .add_hidden(32)
             .add_hidden(64)
             .build_random(1);
@@ -598,7 +598,7 @@ mod tests {
 
     #[test]
     fn test_model_layers_ref() {
-        let model = MicroModelBuilder::new(16, 16, CacheBudget::l2_rpi5())
+        let model = MicroModelBuilder::new(16, 16, CacheBudget::l2_cortex_a76())
             .add_hidden(16)
             .build_random(1);
 
@@ -612,7 +612,7 @@ mod tests {
         // ~4M params: 6 layers of 512→512
         // Per layer: 2 × ceil(512/32) × 512 × 4 = 2 × 16 × 512 × 4 = 65536 bytes
         // Total: 6 × 65536 = 393216 bytes = 384 KB → L2 (512KB) に収まる
-        let mut builder = MicroModelBuilder::new(512, 512, CacheBudget::l2_rpi5());
+        let mut builder = MicroModelBuilder::new(512, 512, CacheBudget::l2_cortex_a76());
         for _ in 0..5 {
             builder = builder.add_hidden(512);
         }
@@ -635,7 +635,7 @@ mod tests {
     #[test]
     fn test_realistic_l2_model_inference() {
         // 512→256→512 model, realistic inference test
-        let model = MicroModelBuilder::new(512, 512, CacheBudget::l2_rpi5())
+        let model = MicroModelBuilder::new(512, 512, CacheBudget::l2_cortex_a76())
             .add_hidden(256)
             .build_random(123);
 
@@ -655,8 +655,8 @@ mod tests {
 
     #[test]
     fn test_deterministic_build() {
-        let m1 = MicroModelBuilder::new(16, 16, CacheBudget::l2_rpi5()).build_random(42);
-        let m2 = MicroModelBuilder::new(16, 16, CacheBudget::l2_rpi5()).build_random(42);
+        let m1 = MicroModelBuilder::new(16, 16, CacheBudget::l2_cortex_a76()).build_random(42);
+        let m2 = MicroModelBuilder::new(16, 16, CacheBudget::l2_cortex_a76()).build_random(42);
 
         let input = [1.0f32; 16];
         let mut out1 = vec![0.0f32; 16];
@@ -677,8 +677,8 @@ mod tests {
 
     #[test]
     fn test_different_seeds_differ() {
-        let m1 = MicroModelBuilder::new(16, 16, CacheBudget::l2_rpi5()).build_random(1);
-        let m2 = MicroModelBuilder::new(16, 16, CacheBudget::l2_rpi5()).build_random(2);
+        let m1 = MicroModelBuilder::new(16, 16, CacheBudget::l2_cortex_a76()).build_random(1);
+        let m2 = MicroModelBuilder::new(16, 16, CacheBudget::l2_cortex_a76()).build_random(2);
 
         let input = [1.0f32; 16];
         let mut out1 = vec![0.0f32; 16];

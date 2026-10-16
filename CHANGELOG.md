@@ -10,6 +10,7 @@ All notable changes to ALICE-ML will be documented in this file.
 - CI: 公開 API の互換性の検査を `.github/workflows/semver-checks.yml` (`scripts/semver_gate.py`、ALICE-Law / ALICE-DB ほかと同一) に置き換えた crates.io の最新の alice-ml を baseline にし、既定・既定なし・全 feature の 3 組で cargo semver-checks を走らせ、互換でない変更を失敗させる 公開済みは 0.2.0 なので 0.3.0 は major の段で比較しない 0.3.0 の公開後は 0.3.1 として検査する 比べるのは CI の host の architecture (x86_64) の item だけで、`neon` (aarch64) の item は見ない 旧 job (security-audit.yml) は直前の commit (`HEAD~1`) と比べ、結果を問わない informational だった
 - CI: clippy の禁止一覧の canary (`scripts/clippy_canary.py`) を追加した 植える呼び出しの表 `scripts/clippy_canary_calls.tsv` は `scripts/gen_clippy_canary_calls.py` が `clippy.toml` から 1 entry 1 行で生成し、CI が再生成して byte で比べる この repo は 54 件 (`disallowed-methods` の f32 / f64 の method、すべて植える) `scripts/clippy_canary.py` / `scripts/test_clippy_canary.py` / `scripts/gen_clippy_canary_calls.py` / `scripts/test_gen_clippy_canary_calls.py` は ALICE-DB と同じ中身
 - 公開する文面の検査の指摘を直した (tree の指摘は 0 件) 式と公開 API は変えていない
+- **Breaking:** `CacheBudget` の L2 の 2 つの preset の名前を CPU 名の `CacheBudget::l2_cortex_a76` / `CacheBudget::l2_cortex_a76_dual` にし、`name` も `"L2-CortexA76"` / `"L2x2-CortexA76"` にした (値の 512 KB / 1 MB は同じ) 旧名の別名は置かない
 
 ### Added
 - CI: `no-direct-rkyv` guard (この crate が rkyv に直接依存せず archive もしないことを検査)
