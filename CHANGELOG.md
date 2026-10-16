@@ -7,6 +7,7 @@ All notable changes to ALICE-ML will be documented in this file.
 ### Changed
 - `db` feature: `alice-db` の要求を `0.4` から `0.5` に変更 (`fs` feature は従来どおり有効) `src/db_bridge.rs` の変更は無い rkyv 0.7 (RUSTSEC-2026-0235) には alice-db 経由でのみ到達し、その ignore の前提を `scripts/no_direct_rkyv.py` が CI で検査する
 - `deny.toml`: pyo3 0.29 で解消済の RUSTSEC-2026-0176 / RUSTSEC-2026-0177 の ignore を削除
+- CI: 公開 API の互換性の検査を `.github/workflows/semver-checks.yml` (`scripts/semver_gate.py`、ALICE-Law / ALICE-DB ほかと同一) に置き換えた crates.io の最新の alice-ml を baseline にし、既定・既定なし・全 feature の 3 組で cargo semver-checks を走らせ、互換でない変更を失敗させる 公開済みは 0.2.0 なので 0.3.0 は major の段で比較しない 0.3.0 の公開後は 0.3.1 として検査する 比べるのは CI の host の architecture (x86_64) の item だけで、`neon` (aarch64) の item は見ない 旧 job (security-audit.yml) は直前の commit (`HEAD~1`) と比べ、結果を問わない informational だった
 
 ### Added
 - CI: `no-direct-rkyv` guard (この crate が rkyv に直接依存せず archive もしないことを検査)
