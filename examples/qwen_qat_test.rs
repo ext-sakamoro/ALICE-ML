@@ -5,9 +5,9 @@
 //!
 //! ```bash
 //! cargo run --example qwen_qat_test --features safetensors --release -- \
-//!   --atml ~/Project-ALICE/models/qwen2.5-1.5b-qat-merged/qwen2.5-1.5b-qat.atml \
-//!   --fp32 ~/Project-ALICE/models/qwen2.5-1.5b-qat-merged/qwen2.5-1.5b-qat-fp32.bin \
-//!   --tokenizer ~/Project-ALICE/models/qwen2.5-1.5b-qat-merged/tokenizer.json
+//!   --atml <model dir>/qwen2.5-1.5b-qat.atml \
+//!   --fp32 <model dir>/qwen2.5-1.5b-qat-fp32.bin \
+//!   --tokenizer <model dir>/tokenizer.json
 //! ```
 
 // example: QAT 検証 report、統計表示 (usize → f64) を 1 本の main で順に見せる

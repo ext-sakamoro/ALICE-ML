@@ -9,10 +9,12 @@ All notable changes to ALICE-ML will be documented in this file.
 - `deny.toml`: pyo3 0.29 で解消済の RUSTSEC-2026-0176 / RUSTSEC-2026-0177 の ignore を削除
 - CI: 公開 API の互換性の検査を `.github/workflows/semver-checks.yml` (`scripts/semver_gate.py`、ALICE-Law / ALICE-DB ほかと同一) に置き換えた crates.io の最新の alice-ml を baseline にし、既定・既定なし・全 feature の 3 組で cargo semver-checks を走らせ、互換でない変更を失敗させる 公開済みは 0.2.0 なので 0.3.0 は major の段で比較しない 0.3.0 の公開後は 0.3.1 として検査する 比べるのは CI の host の architecture (x86_64) の item だけで、`neon` (aarch64) の item は見ない 旧 job (security-audit.yml) は直前の commit (`HEAD~1`) と比べ、結果を問わない informational だった
 - CI: clippy の禁止一覧の canary (`scripts/clippy_canary.py`) を追加した 植える呼び出しの表 `scripts/clippy_canary_calls.tsv` は `scripts/gen_clippy_canary_calls.py` が `clippy.toml` から 1 entry 1 行で生成し、CI が再生成して byte で比べる この repo は 54 件 (`disallowed-methods` の f32 / f64 の method、すべて植える) `scripts/clippy_canary.py` / `scripts/test_clippy_canary.py` / `scripts/gen_clippy_canary_calls.py` / `scripts/test_gen_clippy_canary_calls.py` は ALICE-DB と同じ中身
+- 公開する文面の検査が指摘した 44 行を直した workflow と設定の comment にあった内部の参照 (覚え書きへの link、規則名) を消し、`examples/qwen_qat_test.rs` の model の path を `<model dir>` に、doc comment の機器名を CPU 名 (Arm Cortex-A76) にした `.gitignore` の手元専用の行は外した
 
 ### Added
 - CI: `no-direct-rkyv` guard (この crate が rkyv に直接依存せず archive もしないことを検査)
 - **`alice-law-conformance.toml` を追加**: ALICE-Law の 14 gate (G1 から G14) それぞれについて、この repository を実測した状態を宣言する manifest 現時点で `pass` は 0 件 (`fail-known` 10 / `unverified` 4)、`pass` に届かない理由は G1 が pyo3 feature を CI の clippy で lint していないこと (src/python.rs に追加した禁止 method は既存の CI 全 job で通過し、`--features pyo3` の clippy のみが検出) と、canary / release leg / 固定 bit pattern の golden / semantics identifier が未整備なこと
+- CI: 公開する文面の検査 (`.github/workflows/public-text.yml`、`scripts/public_text.sh`、`.github/public-text-pin`、`scripts/test_public_text.py`、ALICE-Edge と同じ中身) を追加した ALICE-Law の `scripts/public_text_check.py` を pin した revision と SHA-256 で取り、HEAD の tree と base 以降の commit を読み、何も比べなければ失敗する
 
 ### Fixed
 - **`rust-version` を `1.98.1` から `1.87` に訂正**: 0.3.0 は開発用の toolchain pin の値をそのまま MSRV として宣言していたが、実測の下限は 1.87 (自 crate の `Vec::len` / `is_empty` の const 利用が 1.87 で安定化、`alice-db` / `alice-zip` の `rust-version` も 1.87、`alice-det-math` は 1.85) 1.92.0 / 1.90 / 1.88 / 1.87 で `cargo check --all-targets --all-features` が通り、1.86 / 1.85 は const fn の不安定機能で落ちる `rust-version` が過大だったため 1.98.1 未満の toolchain を使う下流 (path 依存の crate など) が `requires rustc 1.98.1` で build できなかった
