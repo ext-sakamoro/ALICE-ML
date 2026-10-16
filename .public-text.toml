@@ -1,0 +1,7 @@
+[public-text]
+
+[[public-text.allow]]
+path = "CHANGELOG.md"
+class = "device"
+count = 1
+why = "published API history: the 0.2.x entry names the preset functions as they were released"

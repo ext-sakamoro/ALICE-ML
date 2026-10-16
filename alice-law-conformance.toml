@@ -79,7 +79,7 @@ status = "pass"
 evidence = [".github/workflows/public-text.yml", "scripts/public_text.sh", ".github/public-text-pin", "scripts/test_public_text.py"]
 mutant = "measured 2026-10-16: in a throwaway clone at this change, a committed README.md line naming an internal rules file makes PUBLIC_TEXT_BASE=<previous commit> scripts/public_text.sh report 'README.md:202: private name' and '1 findings in 416 files'; the unchanged tree reports '0 findings in 416 files at HEAD'."
 since = ""
-note = "the workflow fetches ALICE-Law's scripts/public_text_check.py at the revision in .github/public-text-pin (5de698ece34ab77c9c2ea78ae59dd58ed2da5f1c) and refuses it unless its SHA-256 is 4b3d9542276a6d758cbdce534e8c6c394ff686753340b64e1381f615b604edcc (rechecked against the file at that revision); it reads the tree at HEAD and the commits since the base, exits 2 when it compared nothing, and runs on pushes to main and ci/** branches and on pull requests. The four files are byte-identical to ALICE-Edge's. The tree has 0 findings."
+note = "the workflow fetches ALICE-Law's scripts/public_text_check.py at the revision in .github/public-text-pin (779fa443f95bc0caca5ca2d5bdb9156051fd6143) and refuses it unless its SHA-256 is e439fdd7495e45486b67d57d227f828426b703c0224b8a00d2e8a1c2f1e66594 (rechecked against the file at that revision); it reads the tree at HEAD and the commits since the base, exits 2 when it compared nothing, and runs on pushes to main and ci/** branches and on pull requests. The four files are byte-identical to ALICE-Edge's. The tree has 0 findings."
 
 [G13]
 status = "fail-known"
