@@ -76,4 +76,13 @@ disallowed-methods = [
     { path = "f64::powi", reason = "G1 marks this pending (cross-target measurement not concluded); this crate bans it now: lowers to a compiler-rt routine with unspecified multiplication order; use alice_det_math::powi" },
     { path = "f32::mul_add", reason = "G1 marks this allowed (single-rounding, not a drift source) but this crate bans it anyway: it rounds differently from a * b + c; this crate writes a * b + c everywhere" },
     { path = "f64::mul_add", reason = "G1 marks this allowed (single-rounding, not a drift source) but this crate bans it anyway: it rounds differently from a * b + c; this crate writes a * b + c everywhere" },
+    # Determinism gate (G10): no OS entropy and no wall clock in production code.
+    { path = "std::time::Instant::now", reason = "the wall clock makes results depend on timing; pass time in or use a step count" },
+    { path = "std::time::SystemTime::now", reason = "the wall clock makes results depend on timing; pass time in or use a step count" },
+    { path = "std::time::Instant::elapsed", reason = "reads the wall clock the same as Instant::now; duration_since on an already-held value is fine, this reads the clock again" },
+    { path = "std::time::SystemTime::elapsed", reason = "reads the wall clock the same as SystemTime::now; duration_since on an already-held value is fine, this reads the clock again" },
+    { path = "std::collections::hash_map::RandomState::new", reason = "seeds from OS randomness and would make HashMap iteration order non-deterministic" },
+]
+disallowed-types = [
+    { path = "std::collections::hash_map::RandomState", reason = "seeds from OS randomness and would make HashMap iteration order non-deterministic; see disallowed-methods for RandomState::new" },
 ]

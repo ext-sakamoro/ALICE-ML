@@ -39,6 +39,10 @@ fn main() {
     println!("║  ALICE QAT ECU — Load .atml + Real Inference            ║");
     println!("╚══════════════════════════════════════════════════════════╝\n");
 
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "measuring this CLI run's own wall-clock duration for a progress print, not a deterministic computation"
+    )]
     let start = Instant::now();
 
     // Load tokenizer
@@ -73,7 +77,12 @@ fn main() {
         "  Model memory: {:.1} MB",
         model.memory_bytes() as f64 / 1e6
     );
-    println!("  Load time: {:.1}s", start.elapsed().as_secs_f32());
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "measuring this CLI run's own wall-clock duration for a progress print, not a deterministic computation"
+    )]
+    let load_time = start.elapsed().as_secs_f32();
+    println!("  Load time: {load_time:.1}s");
 
     // ECU prompts
     let prompts = vec![
@@ -112,15 +121,27 @@ fn main() {
         model.clear_cache();
 
         // Prefill
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "measuring this CLI run's own wall-clock duration for a progress print, not a deterministic computation"
+        )]
         let pf_start = Instant::now();
         let mut logits = Vec::new();
         for &tid in &input_ids {
             logits = model.forward(tid);
         }
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "measuring this CLI run's own wall-clock duration for a progress print, not a deterministic computation"
+        )]
         let pf_ms = pf_start.elapsed().as_secs_f64() * 1000.0;
 
         // Generate (greedy)
         let mut generated: Vec<u32> = Vec::new();
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "measuring this CLI run's own wall-clock duration for a progress print, not a deterministic computation"
+        )]
         let gen_start = Instant::now();
 
         for _ in 0..40 {
@@ -136,6 +157,10 @@ fn main() {
             generated.push(next_id);
             logits = model.forward(next_id);
         }
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "measuring this CLI run's own wall-clock duration for a progress print, not a deterministic computation"
+        )]
         let gen_ms = gen_start.elapsed().as_secs_f64() * 1000.0;
         let tps = if gen_ms > 0.0 {
             generated.len() as f64 / gen_ms * 1000.0
@@ -168,7 +193,12 @@ fn main() {
         );
     }
 
-    println!("\n  Total: {:.1}s", start.elapsed().as_secs_f32());
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "measuring this CLI run's own wall-clock duration for a progress print, not a deterministic computation"
+    )]
+    let total_time = start.elapsed().as_secs_f32();
+    println!("\n  Total: {total_time:.1}s");
 }
 
 // ---------------------------------------------------------------------------
