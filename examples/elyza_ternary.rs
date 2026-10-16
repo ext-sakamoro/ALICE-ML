@@ -44,6 +44,10 @@ fn main() {
             .expect("Usage: --quantize --input <dir> --output <file.atml>");
 
         println!("Quantizing model from: {input_dir}");
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "measuring this CLI run's own wall-clock duration for a progress print, not a deterministic computation"
+        )]
         let start = Instant::now();
 
         // Find safetensors files
@@ -91,6 +95,10 @@ fn main() {
             std::process::exit(1);
         }
 
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "measuring this CLI run's own wall-clock duration for a progress print, not a deterministic computation"
+        )]
         let elapsed = start.elapsed().as_secs();
         println!("  Total quantization time: {elapsed}s");
     } else {
