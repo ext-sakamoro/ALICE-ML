@@ -19,3 +19,5 @@ fuzz/target/
 # Python (scripts/readme_sync.py etc.)
 __pycache__/
 *.pyc
+# the G3 checker is a binary with its own workspace: its lock is committed (built with --locked)
+!tools/no-outer-fneg-of-fma/Cargo.lock

@@ -1,0 +1,33 @@
+# tools/no-outer-fneg-of-fma (syntax-tree pre-check) and scripts/fneg_fma_ir_check.py
+# (optimised-IR gate), ALICE-Law G3. Both read this file (copied byte-identical from
+# ALICE-LOL with the two checks; this file itself is per repository).
+#
+# expected-fma-calls / expected-src-fma-calls: the fma-family calls the syntax-tree
+# check finds in every scanned file / in src/. Both must equal what it finds: update
+# them in the commit that adds or removes a call. src/ has none (clippy.toml bans
+# mul_add); tests/analytic_oracle.rs has two, neither negated.
+expected-fma-calls = 2
+expected-src-fma-calls = 0
+
+# [[ir]]: per target and package, the floor of fma-family calls in the optimised IR of
+# the library. With no fma call in src/ the floor is 0 (the IR check still fails on a
+# module without functions, and on any negated fma, which would come from inlined code
+# of a dependency).
+
+# [[allow]]: tests/ only; src/ has no exception.
+
+[[allow]]
+path = "tests/analytic_oracle.rs"
+line = "assert!("
+count = 1
+reason = "the scale-linearity oracle's tolerance check `c.mul_add(-s0.scale, sc.scale).abs() <= ...` sits inside assert!; the fma result is not negated (the negation is of an operand, -s0.scale, inside the single rounding), and the syntax tree cannot see into the macro"
+
+[[ir]]
+target = "x86_64-unknown-linux-gnu"
+package = "alice-ml"
+min-fma-calls = 0
+
+[[ir]]
+target = "aarch64-unknown-linux-gnu"
+package = "alice-ml"
+min-fma-calls = 0
