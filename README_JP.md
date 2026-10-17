@@ -180,7 +180,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `e75d038a6aaa` と
 |---|---|---|
 | G1 no-libm-direct | 適合 | layers that read: clippy.toml bans all 25 of G1's banned methods for f32 and f64 (plus powi and mul_add for both widths, and the reasons are in the file; … |
 | G2 ieee-max-min | 適合 | every float maximum, minimum, clamp, argmax and selection order of the library goes through src/law_math.rs. Residual: the AVX2 max / min intrinsics are not … |
-| G3 no-outer-fneg-of-fma | 未確認 | no syntax-tree checker for an outer negation of an fma exists (scripts/ holds check_g1_banned_list.py, check_msrv.py and readme_sync.py only), which the gate … |
+| G3 no-outer-fneg-of-fma | 適合 | no fused multiply-add call in the library sources (clippy.toml also bans mul_add there): the syntax-tree check reads 37 files and counts 2 fma-family calls, … |
 | G4 debug-release-arch-goldens | 未達 | no signed-zero or exact-cancellation golden exists: tests/ holds tests/analytic_oracle.rs (closed-form comparisons), tests/calibration_oracle.rs (tolerance … |
 | G5 release-profile-test-leg | 未達 | no CI job runs the test suite under the release profile, on aarch64 or anywhere: the test job (ci.yml:26-37) runs `cargo test --lib --tests` three times in … |
 | G6 semantics-id | 適合 | hex with alice-det-math 0.5.1: a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b. The identifier attests the pinned kernels (relu, max_min, … |
