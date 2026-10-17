@@ -94,7 +94,7 @@ evidence = [
 ]
 mutant = "measured 2026-10-18 on aarch64-apple-darwin, each reverted: clamp as `if x < lo { lo } else if x > hi { hi } else { x }`, max_of folded with `if b > a { b } else { a }`, argmax by rposition, relu as `if x > 0.0 { x } else { x * 0.0 }`, tensor_softmax without the max shift, and calibration's softmax_scaled without the max shift each make law_sites_signed_zero_and_exact_cancellation_bits fail (6 of 6 site classes red). Before pinning, the table was measured in debug and release on aarch64-apple-darwin and x86_64-apple-darwin (Rosetta 2, scalar: no AVX2) with features std ffi simd neon parallel db safetensors: identical in all four, so no identifier moved"
 since = ""
-note = "the AVX2 lanes of law_math are not covered by this golden on a local x86_64 (Rosetta 2 has no AVX2); on CI they are taken when the runner reports avx2 and are proven separately by ci.yml's lane test. src/python.rs (pyo3) is not built by these runs. A NaN's sign and payload are not pinned (G2)."
+note = "the AVX2 lanes of law_math are not covered by this golden on a local x86_64 (Rosetta 2 has no AVX2); on CI they are taken when the runner reports avx2 and are proven separately by ci.yml's lane test. src/python.rs (pyo3) is not built by these runs. A NaN's sign and payload are not pinned (G2). Why both arch legs are kept (measured 2026-10-18): a clamp mutant that returns black_box(0.0)/black_box(0.0) for a NaN input stays green on aarch64, where 0/0 is 0x7fc0_0000, and fails on x86_64, where 0/0 is 0xffc0_0000; the NaN pins of float_edge_golden have that tooth only on the x86_64 legs."
 
 [G5]
 status = "pass"
@@ -105,7 +105,7 @@ evidence = [
 ]
 mutant = "the same six site mutants as G4 fail the release run (the golden is the same file); measured 2026-10-18 in release on aarch64-apple-darwin and x86_64-apple-darwin: identical to debug"
 since = ""
-note = "the x86_64 leg is not claimed to cover the AVX2 lanes (taken only when the runner reports avx2, printed in the log); the hardware fma claim rests on the macos-latest leg only."
+note = "the x86_64 leg is not claimed to cover the AVX2 lanes (taken only when the runner reports avx2, printed in the log); the hardware fma claim rests on the macos-latest leg only. Why both arch legs are kept (measured 2026-10-18): a clamp mutant that returns black_box(0.0)/black_box(0.0) for a NaN input stays green on aarch64, where 0/0 is 0x7fc0_0000, and fails on x86_64, where 0/0 is 0xffc0_0000; the NaN pins of float_edge_golden have that tooth only on the x86_64 legs."
 
 [G6]
 status = "pass"
