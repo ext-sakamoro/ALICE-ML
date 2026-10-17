@@ -76,10 +76,7 @@ pub fn cross_entropy_loss(logits: &[f32], targets: &[f32], grad_out: &mut [f32])
     }
 
     // Numerically stable softmax
-    let max_logit = logits
-        .iter()
-        .copied()
-        .fold(f32::NEG_INFINITY, crate::law_math::max);
+    let max_logit = crate::law_math::max_of(logits);
     let mut exp_sum = 0.0_f32;
     for &l in logits {
         exp_sum += alice_det_math::exp(l - max_logit);

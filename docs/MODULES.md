@@ -9,6 +9,7 @@ for the full API.
 | `calibration` | Probability calibration — measuring it, and fixing it | — |
 | `dataset` | `Dataset` trait and batch iterators | — |
 | `error_analysis` | Cumulative quantization error analysis | — |
+| `law_math` | Maximum, minimum, clamp, argmax and selection order with one defined result on every target (`-0 < +0`, NaN skipped) | — |
 | `layer` | `BitLinear` layer, a drop-in replacement for `nn.Linear` using 1.58-bit ternary weights | — |
 | `model_io` | Model weight serialization/deserialization (`.atml`) | — |
 | `ops` | Ternary matrix operations — the matvec/matmul kernels | — |

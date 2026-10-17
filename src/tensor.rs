@@ -266,13 +266,13 @@ pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
         }
         let tail = chunks * 8;
         for i in 0..remainder {
-            out.data[tail + i] = crate::law_math::max(a.data[tail + i], 0.0);
+            out.data[tail + i] = crate::law_math::relu(a.data[tail + i]);
         }
         return;
     }
 
     for (o, &av) in out.data.iter_mut().zip(a.data.iter()) {
-        *o = crate::law_math::max(av, 0.0);
+        *o = crate::law_math::relu(av);
     }
 }
 
@@ -300,13 +300,13 @@ pub fn tensor_relu_inplace(a: &mut Tensor) {
         }
         let tail = chunks * 8;
         for i in 0..remainder {
-            a.data[tail + i] = crate::law_math::max(a.data[tail + i], 0.0);
+            a.data[tail + i] = crate::law_math::relu(a.data[tail + i]);
         }
         return;
     }
 
     for x in a.data.iter_mut() {
-        *x = crate::law_math::max(*x, 0.0);
+        *x = crate::law_math::relu(*x);
     }
 }
 
@@ -329,10 +329,7 @@ pub fn tensor_softmax(a: &Tensor, out: &mut Tensor) {
         let out_slice = &mut out.data[start..end];
 
         // Find max for numerical stability
-        let max_val = in_slice
-            .iter()
-            .copied()
-            .fold(f32::NEG_INFINITY, crate::law_math::max);
+        let max_val = crate::law_math::max_of(in_slice);
 
         // Exp and sum
         let mut sum = 0.0f32;
@@ -413,6 +410,7 @@ pub fn tensor_mean(a: &Tensor) -> f32 {
 /// enabled and AVX2 is available at runtime, falling back to a scalar fold
 /// on non-AVX2 / non-x86 targets or for the tail.
 #[inline]
+#[must_use]
 pub fn tensor_max(a: &Tensor) -> f32 {
     let len = a.data.len();
     if len == 0 {
@@ -436,10 +434,7 @@ pub fn tensor_max(a: &Tensor) -> f32 {
             // the lanes does not change the result)
             let mut lanes = [0.0f32; 8];
             _mm256_storeu_ps(lanes.as_mut_ptr(), max_vec);
-            let mut result = lanes
-                .iter()
-                .copied()
-                .fold(f32::NEG_INFINITY, crate::law_math::max);
+            let mut result = crate::law_math::max_of(&lanes);
             // Scalar tail
             for i in (chunks * 8)..len {
                 result = crate::law_math::max(result, a.data[i]);
@@ -448,10 +443,7 @@ pub fn tensor_max(a: &Tensor) -> f32 {
         }
     }
 
-    a.data
-        .iter()
-        .copied()
-        .fold(f32::NEG_INFINITY, crate::law_math::max)
+    crate::law_math::max_of(a.data)
 }
 
 /// Minimum element
@@ -460,6 +452,7 @@ pub fn tensor_max(a: &Tensor) -> f32 {
 /// enabled and AVX2 is available at runtime, falling back to a scalar fold
 /// on non-AVX2 / non-x86 targets or for the tail.
 #[inline]
+#[must_use]
 pub fn tensor_min(a: &Tensor) -> f32 {
     let len = a.data.len();
     if len == 0 {
@@ -483,10 +476,7 @@ pub fn tensor_min(a: &Tensor) -> f32 {
             // the lanes does not change the result)
             let mut lanes = [0.0f32; 8];
             _mm256_storeu_ps(lanes.as_mut_ptr(), min_vec);
-            let mut result = lanes
-                .iter()
-                .copied()
-                .fold(f32::INFINITY, crate::law_math::min);
+            let mut result = crate::law_math::min_of(&lanes);
             // Scalar tail
             for i in (chunks * 8)..len {
                 result = crate::law_math::min(result, a.data[i]);
@@ -495,10 +485,7 @@ pub fn tensor_min(a: &Tensor) -> f32 {
         }
     }
 
-    a.data
-        .iter()
-        .copied()
-        .fold(f32::INFINITY, crate::law_math::min)
+    crate::law_math::min_of(a.data)
 }
 
 /// Copy data from source to destination
@@ -559,10 +546,7 @@ pub fn tensor_softmax_fast(a: &Tensor, out: &mut Tensor) {
         let slice = &a.data[start..end];
 
         // Find max for numerical stability
-        let max_val = slice
-            .iter()
-            .copied()
-            .fold(f32::NEG_INFINITY, crate::law_math::max);
+        let max_val = crate::law_math::max_of(slice);
 
         // fast_exp and accumulate
         let mut sum = 0.0f32;
