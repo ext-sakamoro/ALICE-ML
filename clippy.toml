@@ -92,5 +92,7 @@ disallowed-methods = [
     { path = "std::collections::hash_map::RandomState::new", reason = "seeds from OS randomness and would make HashMap iteration order non-deterministic" },
 ]
 disallowed-types = [
+    { path = "std::collections::HashMap", reason = "ALICE-Law G13: iteration order is unspecified and differs between runs; use BTreeMap (key order)" },
+    { path = "std::collections::HashSet", reason = "ALICE-Law G13: iteration order is unspecified and differs between runs; use BTreeSet (key order)" },
     { path = "std::collections::hash_map::RandomState", reason = "seeds from OS randomness and would make HashMap iteration order non-deterministic; see disallowed-methods for RandomState::new" },
 ]

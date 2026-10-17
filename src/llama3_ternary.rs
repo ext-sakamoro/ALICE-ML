@@ -326,7 +326,7 @@ impl Llama3TernaryModel {
     pub fn from_safetensors_with_scales(
         sf: &SafetensorsFile<'_>,
         config: Llama3TernaryConfig,
-        scales: &std::collections::HashMap<String, (f32, f32)>,
+        scales: &std::collections::BTreeMap<String, (f32, f32)>,
     ) -> Option<Self> {
         use crate::quantize::{quantize_to_ternary, quantize_to_ternary_qat};
 
