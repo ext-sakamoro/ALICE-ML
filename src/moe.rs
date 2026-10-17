@@ -210,7 +210,7 @@ fn softmax_inplace(x: &mut [f32]) {
 /// 高速exp近似（range reduction + 3次多項式）
 #[inline(always)]
 fn fast_exp(x: f32) -> f32 {
-    let clamped = x.clamp(-87.0_f32, 88.0_f32);
+    let clamped = crate::law_math::clamp(x, -87.0_f32, 88.0_f32);
     let val = clamped * core::f32::consts::LOG2_E;
     let ipart = floor_f32(val);
     let fpart = val - ipart;

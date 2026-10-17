@@ -132,6 +132,7 @@ pub mod arena;
 pub mod calibration;
 pub mod dataset;
 pub mod error_analysis;
+pub mod law_math;
 pub mod layer;
 pub mod model_io;
 pub mod ops;

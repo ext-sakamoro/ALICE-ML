@@ -580,7 +580,10 @@ impl Llama3TernaryModel {
                 }
 
                 // Softmax
-                let max_s = scores.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+                let max_s = scores
+                    .iter()
+                    .copied()
+                    .fold(f32::NEG_INFINITY, crate::law_math::max);
                 let mut sum = 0.0f32;
                 for s in &mut scores {
                     *s = alice_det_math::exp(*s - max_s);
