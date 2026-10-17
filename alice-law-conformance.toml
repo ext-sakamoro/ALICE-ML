@@ -77,8 +77,13 @@ note = "hex with alice-det-math 0.5.1: a547237044e8fdba9ab152f7af13c431f675e5382
 reference_repo = "ALICE-Physics"
 
 [G7]
-status = "unverified"
-note = "audit, not decided. The crate's type-erasing boundaries: 67 `extern \"C\" fn` in src/ffi.rs (feature ffi; the arena, tensor, weight and model entry points, each wrapped by `guarded` at src/ffi.rs:77), 13 #[pyfunction] exports in src/python.rs (feature pyo3), the byte readers ModelArchive::deserialize (src/model_io.rs:114), StreamingModel::from_bytes (src/streaming.rs:160) and SafetensorsFile::parse (src/safetensors.rs:349), and the optional alice-db sink (src/db_bridge.rs, feature db); there is no build.rs, no procedural macro and no dyn Any or name-keyed registry. No boundary in this list is seen to receive another Law-bearing crate's value (the FFI and Python entry points take raw f32 slices and weight handles; the alice-det-math calls are in-memory function calls that return plain f32 / f64), but that is read from the code, not produced by a scanner, and the question depends on G6, since without an identifier there is nothing to carry. Not claimed as n/a: that status needs a scanner finding zero sites and the mutant of adding one, and none exists."
+status = "pass"
+evidence = [
+    "tests/g7_boundaries.rs (scans src/ for every boundary form G7 names and requires the classified counts: 67 `extern \"C\" fn` in src/ffi.rs and 13 #[pyfunction] in src/python.rs (raw f32 data and this crate's own handles from the caller), ModelArchive::deserialize / read and LayerStreamer::from_bytes (this crate's own ATML format, G8), SafetensorsFile::parse (an external format), one `dyn core::any::Any` (a caught panic's payload in src/ffi.rs), one `use alice_db::` (src/db_bridge.rs, alice-db's Rust API with concrete types); and none of: a wasm export, a boxed trait-object registry, a decoder of another alice_* crate called on bytes, a build.rs, a procedural-macro target; it fails on a count that differs and when it read no source file)",
+]
+mutant = "measured 2026-10-17 and reverted: a new `#[no_mangle] pub extern \"C\" fn` in src/ffi.rs fails it (`C ABI export: 68 found, 67 classified`); an empty build.rs at the crate root fails it (`build.rs exists`); a call of `alice_db::from_bytes` in src/db_bridge.rs fails it (`another Law-bearing crate's decoder: 1 found`)"
+since = ""
+note = "the list of type-erasing boundaries that receive another Law-bearing crate's value is empty: the C ABI and the Python exports take the caller's numbers, the byte readers read this crate's own format (G8) or an external one, and the one Law-bearing crate called (alice-db, feature db) is called in memory with concrete types, so G7's in-memory rule applies; alice-det-math calls take and return numbers. The classification is audited (the reasons are in the test), the counts are machine-checked"
 
 [G8]
 status = "pass"
