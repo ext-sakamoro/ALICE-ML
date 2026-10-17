@@ -5,6 +5,7 @@ All notable changes to ALICE-ML will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- ALICE-Law G7: 型が消える境界 (C ABI 67、Python 13、byte の reader 4、`dyn Any` 1、alice-db の呼び出し 1) を `src/` から数え、それぞれ他の Law を持つ crate の値を受け取らない理由と件数を固定する `tests/g7_boundaries.rs` を足した 新しい境界・`build.rs`・procedural macro・他の alice-* crate の decoder の呼び出しが現れると失敗し、source を 1 つも読まなければ失敗する
 - ALICE-Law G13: `clippy.toml` で `std::collections::HashMap` / `HashSet` を禁止した (canary 68 行) 並列の float 経路 `ops::ternary_matmul_batch` (`parallel`) が 1・2・8 thread で直列の matvec と同じ bit になることを確かめ、`src/` に他の rayon の site が現れたら失敗する `tests/parallel_order.rs` を足した (CI は `run_tests.sh parallel_order=2` で件数も見る)
 - ALICE-Law G8: ATML の format version 2 を足した version の直後に書いた build の `ML_SEMANTICS_ID` (32 byte) を記録する `ModelArchive::read(data, LegacyPolicy)` が記録された識別子を比べ、自分のものなら `Provenance::Verified`、`PREVIOUS_ML_SEMANTICS_IDS` にあれば `VerifiedPrevious`、それ以外は両方の識別子を持つ `ArchiveError::SemanticsMismatch` を返す 識別子の無い version 1 の file は `Provenance::V1Legacy` として読むか、`LegacyPolicy::Refuse` で `ArchiveError::LegacyRefused` にする `tests/atml_semantics.rs`
 - ALICE-Law G6: `alice_ml::semantics::ML_SEMANTICS_ID` を足した `tests/determinism_golden.rs` の 9 本の golden の digest と alice-det-math の `SEMANTICS_ID` を名前順・長さ付きで SHA-256 に畳んだ値で、解決した alice-det-math の世代ごとの表 `ML_SEMANTICS_BY_DET_MATH` から引く (行の無い世代は compile が止まる) crate の version は畳まない `tests/ml_semantics_id.rs` が golden の source から digest を読み、表の全行を再計算する
