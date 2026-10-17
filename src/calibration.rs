@@ -192,7 +192,7 @@ pub fn brier_multiclass(probs: &[f32], label: usize) -> Result<f32, CalibrationE
 /// As [`brier_multiclass`]
 pub fn negative_log_likelihood(probs: &[f32], label: usize) -> Result<f32, CalibrationError> {
     check_distribution(probs, label)?;
-    let p = f64::from(probs[label]).max(MIN_PROBABILITY);
+    let p = crate::law_math::max64(f64::from(probs[label]), MIN_PROBABILITY);
     Ok((-alice_det_math::ln64(p)) as f32)
 }
 
@@ -421,7 +421,7 @@ fn mean_nll(samples: &[(&[f32], usize)], t: f64) -> f64 {
         scratch.clear();
         scratch.resize(logits.len(), 0.0);
         softmax_scaled(logits, t, &mut scratch);
-        acc -= alice_det_math::ln64(scratch[*label].max(MIN_PROBABILITY));
+        acc -= alice_det_math::ln64(crate::law_math::max64(scratch[*label], MIN_PROBABILITY));
     }
     acc / samples.len() as f64
 }

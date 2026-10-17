@@ -32,9 +32,23 @@ jobs:
       - name: Test (default)
         run: cargo test --lib --tests
       - name: Test (simd)
+        # the AVX2 max / min lanes of src/law_math.rs are checked against the scalar
+        # helpers on this x86_64 runner (the test fails if AVX2 is missing)
+        env:
+          ALICE_ML_REQUIRE_AVX2: "1"
         run: cargo test --lib --tests --features simd
       - name: Test (full native feature set)
+        # the AVX2 max / min lanes of src/law_math.rs are checked against the scalar
+        # helpers on this x86_64 runner (the test fails if AVX2 is missing)
+        env:
+          ALICE_ML_REQUIRE_AVX2: "1"
         run: cargo test --lib --tests --features "$NATIVE_FEATURES"
+      # the same lane test alone, with its output, so the log shows the number of
+      # pairs it compared (a pass with no line means it did not run)
+      - name: AVX2 lane test of the Law max / min (count in the log)
+        env:
+          ALICE_ML_REQUIRE_AVX2: "1"
+        run: cargo test --lib --features simd law_math::tests::avx2_lanes_equal_the_scalar_helpers_over_every_pair -- --exact --nocapture
 
   float-environment:
     # ALICE-Law G14 on each OS: round-to-nearest-even and no flush-to-zero at run

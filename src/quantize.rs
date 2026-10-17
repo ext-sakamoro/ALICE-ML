@@ -118,7 +118,7 @@ pub fn quantize_to_ternary(
     // Compute scale (mean absolute value)
     let inv_len = 1.0 / weights.len() as f32;
     let sum_abs: f32 = weights.iter().map(|w| w.abs()).sum();
-    let scale = (sum_abs * inv_len).max(1e-8);
+    let scale = crate::law_math::max(sum_abs * inv_len, 1e-8);
 
     // Quantize
     let mut ternary_values = vec![0i8; weights.len()];
@@ -133,12 +133,12 @@ pub fn quantize_to_ternary(
 
     for (i, &w) in weights.iter().enumerate() {
         // Track range
-        stats.original_range.0 = stats.original_range.0.min(w);
-        stats.original_range.1 = stats.original_range.1.max(w);
+        stats.original_range.0 = crate::law_math::min(stats.original_range.0, w);
+        stats.original_range.1 = crate::law_math::max(stats.original_range.1, w);
 
         // Quantize: round(w / scale) clamped to {-1, 0, +1}
         let scaled = w * inv_scale;
-        let quantized = scaled.round().clamp(-1.0, 1.0) as i8;
+        let quantized = crate::law_math::clamp(scaled.round(), -1.0, 1.0) as i8;
 
         ternary_values[i] = quantized;
 
@@ -197,8 +197,8 @@ pub fn quantize_to_ternary_qat(
         );
     }
 
-    let gamma = scale.max(1e-10);
-    let temp = temperature.max(1e-10);
+    let gamma = crate::law_math::max(scale, 1e-10);
+    let temp = crate::law_math::max(temperature, 1e-10);
     let inv_gamma_temp = 1.0 / (gamma * temp);
     let inv_len = 1.0 / weights.len() as f32;
 
@@ -212,12 +212,12 @@ pub fn quantize_to_ternary_qat(
     let mut mae_sum = 0.0f32;
 
     for (i, &w) in weights.iter().enumerate() {
-        stats.original_range.0 = stats.original_range.0.min(w);
-        stats.original_range.1 = stats.original_range.1.max(w);
+        stats.original_range.0 = crate::law_math::min(stats.original_range.0, w);
+        stats.original_range.1 = crate::law_math::max(stats.original_range.1, w);
 
         // QAT FakeQuantize: round(w / γ / temp) → clamp(-1, 1)
         let scaled = w * inv_gamma_temp;
-        let quantized = scaled.round().clamp(-1.0, 1.0) as i8;
+        let quantized = crate::law_math::clamp(scaled.round(), -1.0, 1.0) as i8;
 
         ternary_values[i] = quantized;
 
@@ -267,7 +267,7 @@ pub fn quantize_to_ternary_sparse(
     // Compute scale
     let inv_len = 1.0 / weights.len() as f32;
     let sum_abs: f32 = weights.iter().map(|w| w.abs()).sum();
-    let scale = (sum_abs * inv_len).max(1e-8);
+    let scale = crate::law_math::max(sum_abs * inv_len, 1e-8);
 
     let cutoff = threshold * scale;
 
@@ -281,8 +281,8 @@ pub fn quantize_to_ternary_sparse(
     let mut mae_sum = 0.0f32;
 
     for (i, &w) in weights.iter().enumerate() {
-        stats.original_range.0 = stats.original_range.0.min(w);
-        stats.original_range.1 = stats.original_range.1.max(w);
+        stats.original_range.0 = crate::law_math::min(stats.original_range.0, w);
+        stats.original_range.1 = crate::law_math::max(stats.original_range.1, w);
 
         // Apply threshold for sparsity
         let quantized = if w.abs() < cutoff {
@@ -358,7 +358,7 @@ pub fn compute_quantization_error(
         let err = (o - d).abs();
         mae += err;
         mse += err * err;
-        max_error = max_error.max(err);
+        max_error = crate::law_math::max(max_error, err);
     }
 
     let n = original.len() as f32;
