@@ -66,8 +66,15 @@ status = "fail-known"
 note = "no CI job runs the test suite under the release profile, on aarch64 or anywhere: the test job (ci.yml:26-37) runs `cargo test --lib --tests` three times in debug on ubuntu-latest, the neon job (ci.yml:41-53) runs it in debug on macos-latest (aarch64), and no step passes --release to cargo test (see G4 for the grep). The required aarch64 release leg, the one that executes a hardware fma instruction, does not exist."
 
 [G6]
-status = "fail-known"
-note = "the crate exports no semantics identifier: src/lib.rs has no SEMANTICS_ID or equivalent (grep for SEMANTICS_ID and semantics over src and tests: 0), so there is no hex test and no pin-change test. The upstream identifier it would fold exists: alice-det-math 0.5.1 (Cargo.lock) exports SEMANTICS_ID at its src/lib.rs:148, and this crate calls into it for exp / ln / log2 / log10 / powf / powi / sin_cos / sqrt64 and the 64-bit exp, ln and powf (31 uses of alice_det_math in src), but does not re-export, fold or pin it. Whether this crate's float outputs are Law-bearing in the sense of docs/CONFORMANCE.md (its Out of scope section names ML float activations and inference numerics as outside) is a decision for the owner; calibration (src/calibration.rs) and the ternary quantisation scale are the candidates, because they feed alice_det_math functions and are stored or compared."
+status = "pass"
+evidence = [
+    "src/semantics.rs (ML_SEMANTICS_ID: SHA-256 fold, sorted by name with a u32 big-endian length prefix, of ML_SEMANTICS_PINS = the nine golden digests of tests/determinism_golden.rs plus alice_det_math::SEMANTICS_ID; taken from ML_SEMANTICS_BY_DET_MATH by the resolved alice-det-math, so a det-math generation without a row stops the compile; PREVIOUS_ML_SEMANTICS_IDS empty; the crate version is not folded; no cfg gates the table)",
+    "tests/ml_semantics_id.rs (reads the digests from the source of tests/determinism_golden.rs, checks the entry names are exactly the goldens plus alice-det-math and the det-math entry is the resolved SEMANTICS_ID, recomputes every BY_DET_MATH row and the documented hex, and checks the fold sees every entry and not the table order)",
+]
+mutant = "measured 2026-10-17 and reverted: re-recording the int8 golden in tests/determinism_golden.rs without updating the pin fails entries_are_the_goldens_plus_det_math (`ML_SEMANTICS_PINS against tests/determinism_golden.rs`); editing the int8 pin alone fails every_row_is_the_fold_of_the_pins (`row for det-math 85e08846...`) and the entries test; a BY_DET_MATH row keyed by a different det-math identifier stops the build (`alice-det-math SEMANTICS_ID has no row in ML_SEMANTICS_BY_DET_MATH`)"
+since = ""
+note = "hex with alice-det-math 0.5.1: a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b. The identifier attests the pinned kernels (relu, max_min, softmax, quantize, int8, cross_entropy, calibration, error_propagation, ffi) and the det-math generation, not every call site (G1 / G2 attest the routing); a kernel without a golden is not covered. It changes when a golden is added or re-recorded. The Physics / DB shape: digests of the crate's own goldens as named pins, the det-math identifier as one entry, a BY_DET_MATH table and a PREVIOUS list"
+reference_repo = "ALICE-Physics"
 
 [G7]
 status = "unverified"

@@ -137,6 +137,7 @@ pub mod layer;
 pub mod model_io;
 pub mod ops;
 pub mod quantize;
+pub mod semantics;
 pub mod tensor;
 pub mod training;
 
