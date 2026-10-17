@@ -62,6 +62,8 @@ jobs:
         run: |
           cargo test --quiet --locked --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml
           cargo run --quiet --locked --release --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml -- --root .
+          # scripts/changed_paths.py decides whether g3-ir.yml's IR job runs; its own tests
+          python3 scripts/test_changed_paths.py
 
   float-environment:
     # ALICE-Law G14 on each OS: round-to-nearest-even and no flush-to-zero at run

@@ -205,6 +205,7 @@ scripts/public_text.sh
 step "ci.yml / test: No negated fma result (syntax tree, tests then check)"
 cargo test --quiet --locked --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml
 cargo run --quiet --locked --release --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml -- --root .
+python3 scripts/test_changed_paths.py
 
 if [[ $quick -eq 1 ]]; then
   echo; echo "preflight --quick OK (test / bench suites skipped)"; exit 0
