@@ -142,12 +142,12 @@ legacy_policy = "src/model_io.rs::Refuse"
 reference_repo = "ALICE-DB"
 
 [G9]
-status = "unverified"
+status = "pass"
 evidence = [
     "scripts/id_move_check.py (shared with the other ALICE crates that carry an identifier; tests scripts/test_id_move_check.py; config scripts/id_move.toml): builds a probe against the published release of the newest release tag (alice-ml 0.2.0 today) and against the working tree, reads semantics::ML_SEMANTICS_ID (stamped into ATML version 2 and the streaming form) as a value and fails when it moved without a breaking version, without the released value in PREVIOUS_ML_SEMANTICS_IDS, or without CHANGELOG.md naming both; every const / static / associated const of type [u8; 32] and every public re-export of another crate's constant must be listed or exempt; .github/workflows/ci.yml clippy job and scripts/preflight.sh; today: ML_SEMANTICS_ID a5472370 is new since 0.2.0",
 ]
 mutant = "measured 2026-10-17, reverted: scripts/id_move.toml naming another path makes scripts/id_move_check.py exit 1 (`ML_SEMANTICS_ID (src/semantics.rs:138): a [u8; 32] item that is neither an [[id]] ...`)"
-note = "the identifier exists from 0.4.0 (ML_SEMANTICS_ID, G6) and ATML records it (G8); 0.4.0 changes the persisted meaning (ATML version 2) and is a 0.x major step, but the audit of the identifier's history that G9 asks for is not done here"
+note = "definition: ML_SEMANTICS_ID ([[id]] in scripts/id_move.toml with PREVIOUS_ML_SEMANTICS_IDS) may move only with a breaking version, or keeping the released value in the previous list with previous-tests that pass with it and fail without it; the crate re-exports no other crate's identifier. Releases: crates.io has one version, 0.2.0 (2026-09-13, the crates.io versions API), and the repository one release tag, alice-ml-v0.2.0; 0.3.0 (062141a) was a version bump that was never published. Base selection: scripts/id_move_check.py release_base takes the newest tag matching v{version} or alice-ml-v{version} whose Cargo.toml names alice-ml at that version; `--print-base` gives alice-ml-0.2.0 today. History, audited over the release and every commit that changed the definition (git log -- src/semantics.rs: b6bbd86 only; git log -G ML_SEMANTICS_ID -- src: b6bbd86, 5b7b117): 0.2.0 carries no identifier and does not depend on alice-det-math (git grep '[u8; 32]' alice-ml-v0.2.0 -- src: none). ML_SEMANTICS_ID is added in b6bbd86 (2026-10-17, a547237044e8fdba with det-math 0.5.1, looked up by det-math's identifier in ML_SEMANTICS_BY_DET_MATH) and written into ATML version 2 by 5b7b117 (G8); it is first carried by 0.4.0 (unpublished), so against the base 0.2.0 it is an addition and PREVIOUS_ML_SEMANTICS_IDS is empty. 0.4.0 is a 0.x major step from 0.2.0 regardless (ATML version 2, the Law wave 29e62fd). No identifier value has been published yet, so no published value can have moved."
 
 [G10]
 status = "pass"

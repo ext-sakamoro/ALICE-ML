@@ -186,7 +186,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `e75d038a6aaa` と
 | G6 semantics-id | 適合 | hex with alice-det-math 0.5.1: a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b. The identifier attests the pinned kernels (relu, max_min, … |
 | G7 handshake-carries-id | 適合 | the list of type-erasing boundaries that receive another Law-bearing crate's value is empty: the C ABI and the Python exports take the caller's numbers, the … |
 | G8 persisted-semantics-id | 適合 | the identifier recorded is ML_SEMANTICS_ID (G6): it pins the quantiser whose scale and packed values the file stores, and the det-math generation. db_bridge … |
-| G9 persisted-meaning-change-is-major | 未確認 | the identifier exists from 0.4.0 (ML_SEMANTICS_ID, G6) and ATML records it (G8); 0.4.0 changes the persisted meaning (ATML version 2) and is a 0.x major step, … |
+| G9 persisted-meaning-change-is-major | 適合 | definition: ML_SEMANTICS_ID ([[id]] in scripts/id_move.toml with PREVIOUS_ML_SEMANTICS_IDS) may move only with a breaking version, or keeping the released … |
 | G10 no-run-varying-artifacts | 適合 | the ban covers what src/ can reach: the clock and RandomState through std, and nothing else, because no direct dependency offers an RNG or a UUID (rand is a … |
 | G11 gate-self-tests | 未達 | unmet: clause (c). scripts/clippy_canary.py, scripts/test_clippy_canary.py, scripts/gen_clippy_canary_calls.py and scripts/test_gen_clippy_canary_calls.py are … |
 | G12 public-repo-text-rules | 適合 | the workflow fetches ALICE-Law's scripts/public_text_check.py at the revision in .github/public-text-pin (779fa443f95bc0caca5ca2d5bdb9156051fd6143) and refuses … |
