@@ -13,10 +13,17 @@
 //!   same bits.
 //! * [`clamp`] / [`clamp64`] keep a NaN input as the canonical NaN (what `f32::clamp`
 //!   returns for NaN) and take every other input through [`max`] and [`min`].
-//! * [`max_ps`] / [`min_ps`] (`x86_64`, AVX2) are the same rule lane by lane, built from
-//!   comparisons and blends; `tests/determinism_golden.rs` and this module's tests
-//!   check them lane for lane against [`max`] / [`min`] over every pair of special
-//!   values.
+//! * [`max_of`] / [`min_of`] are every scalar reduction, [`relu`] is `max(x, +0)`,
+//!   [`argmax`] is the first Law maximum and [`order`] the total order the Law implies
+//!   (for a selection or a sort).
+//! * `max_ps` / `min_ps` (`x86_64` with the `simd` feature, AVX2) are the same rule
+//!   lane by lane, built from comparisons and blends; this module's tests check them
+//!   lane for lane against [`max`] / [`min`] over every pair of special values, and
+//!   `tests/law_ties.rs` through the public reductions.
+//!
+//! `tests/law_ties.rs` asserts the ties of every site class through the public API, and
+//! `scripts/law_tie_mutants.py` rewrites each site as a plain comparison and requires a
+//! test to fail (`scripts/law_tie_equivalents.tsv` lists the rewrites that are equivalent).
 //!
 //! The platform forms are banned by `clippy.toml` (disallowed-methods); this module is
 //! the only place that implements a maximum.
@@ -47,6 +54,62 @@ pub fn clamp64(x: f64, lo: f64, hi: f64) -> f64 {
     } else {
         min64(max64(x, lo), hi)
     }
+}
+
+/// The [`max`] of a slice.
+///
+/// `f32::NEG_INFINITY` for an empty slice and for one that is all NaN (NaN elements are
+/// skipped), and `+0.0` wins over `-0.0` in either order. Every
+/// scalar maximum reduction of the crate is this function (`tests/law_ties.rs` checks
+/// the ties through each public entry point).
+#[inline]
+#[must_use]
+pub fn max_of(xs: &[f32]) -> f32 {
+    xs.iter().copied().fold(f32::NEG_INFINITY, max)
+}
+
+/// The [`min`] of a slice: `f32::INFINITY` for an empty slice and for one that is all
+/// NaN (NaN elements are skipped), and `-0.0` wins over `+0.0` in either order.
+#[inline]
+#[must_use]
+pub fn min_of(xs: &[f32]) -> f32 {
+    xs.iter().copied().fold(f32::INFINITY, min)
+}
+
+/// The index of the [`max_of`] of a slice.
+///
+/// The first element equal to it bit for bit, so `+0.0` is chosen over an earlier
+/// `-0.0`; NaN elements are never chosen; `0` for an empty slice or one that is all NaN.
+#[inline]
+#[must_use]
+pub fn argmax(xs: &[f32]) -> usize {
+    let m = max_of(xs);
+    xs.iter()
+        .position(|x| x.to_bits() == m.to_bits())
+        .unwrap_or(0)
+}
+
+/// The order [`max`] and [`min`] imply, as a total order.
+///
+/// Every NaN below every number (all NaNs equal), and otherwise `f32::total_cmp`
+/// (`-0.0 < +0.0`). A selection or a sort by it gives the same elements as reductions
+/// by [`max`] / [`min`]; with a stable sort, equal values keep their input order.
+#[inline]
+#[must_use]
+pub fn order(a: f32, b: f32) -> core::cmp::Ordering {
+    match (a.is_nan(), b.is_nan()) {
+        (true, true) => core::cmp::Ordering::Equal,
+        (true, false) => core::cmp::Ordering::Less,
+        (false, true) => core::cmp::Ordering::Greater,
+        (false, false) => a.total_cmp(&b),
+    }
+}
+
+/// `max(x, +0.0)`: `+0.0` for `-0.0`, for `+0.0` and for NaN.
+#[inline]
+#[must_use]
+pub fn relu(x: f32) -> f32 {
+    max(x, 0.0)
 }
 
 /// Lane-wise [`max`] of two AVX2 vectors.

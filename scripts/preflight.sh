@@ -108,6 +108,9 @@ step "ci.yml / law-g1-banned-list: check_g1_banned_list (oracle + check)"
 python3 scripts/test_check_g1_banned_list.py
 python3 scripts/check_g1_banned_list.py
 
+step "ci.yml / law-g1-banned-list: law_tie_mutants.py (tests)"
+python3 scripts/test_law_tie_mutants.py
+
 step "ci.yml / msrv: check_msrv (oracle + check)"
 python3 scripts/test_check_msrv.py
 python3 scripts/check_msrv.py

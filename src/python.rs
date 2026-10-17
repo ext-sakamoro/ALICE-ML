@@ -387,7 +387,7 @@ fn relu<'py>(
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let result = py.detach(|| {
         sa.iter()
-            .map(|&x| crate::law_math::max(x, 0.0))
+            .map(|&x| crate::law_math::relu(x))
             .collect::<Vec<f32>>()
     });
     Ok(result.into_pyarray(py))
@@ -403,10 +403,7 @@ fn softmax<'py>(
         .as_slice()
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let result = py.detach(|| {
-        let max_val = sa
-            .iter()
-            .copied()
-            .fold(f32::NEG_INFINITY, crate::law_math::max);
+        let max_val = crate::law_math::max_of(sa);
         let exps: Vec<f32> = sa
             .iter()
             .map(|&x| alice_det_math::exp(x - max_val))
@@ -445,9 +442,7 @@ fn max(a: PyReadonlyArray1<'_, f32>) -> PyResult<f32> {
     let s = a
         .as_slice()
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(s.iter()
-        .copied()
-        .fold(f32::NEG_INFINITY, crate::law_math::max))
+    Ok(crate::law_math::max_of(s))
 }
 
 #[pyfunction]
@@ -455,7 +450,7 @@ fn min(a: PyReadonlyArray1<'_, f32>) -> PyResult<f32> {
     let s = a
         .as_slice()
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(s.iter().copied().fold(f32::INFINITY, crate::law_math::min))
+    Ok(crate::law_math::min_of(s))
 }
 
 // ============================================================================

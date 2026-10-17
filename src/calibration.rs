@@ -274,12 +274,7 @@ impl ReliabilityBins {
         label: usize,
     ) -> Result<(), CalibrationError> {
         check_distribution(probs, label)?;
-        let mut best = 0;
-        for (k, p) in probs.iter().enumerate().skip(1) {
-            if *p > probs[best] {
-                best = k;
-            }
-        }
+        let best = crate::law_math::argmax(probs);
         self.observe(probs[best], best == label)
     }
 
@@ -359,9 +354,7 @@ impl ReliabilityBins {
             }
             let n = f64::from(count);
             let gap = (f64::from(correct) / n - confidence_sum / n).abs();
-            if gap > worst {
-                worst = gap;
-            }
+            worst = crate::law_math::max64(worst, gap);
         }
         worst as f32
     }
@@ -373,13 +366,10 @@ impl ReliabilityBins {
 
 /// `softmax(logits / temperature)` into `out`
 fn softmax_scaled(logits: &[f32], temperature: f64, out: &mut [f64]) {
-    let mut max = f64::NEG_INFINITY;
-    for &z in logits {
-        let scaled = f64::from(z) / temperature;
-        if scaled > max {
-            max = scaled;
-        }
-    }
+    let max = logits
+        .iter()
+        .map(|&z| f64::from(z) / temperature)
+        .fold(f64::NEG_INFINITY, crate::law_math::max64);
     let mut total = 0.0_f64;
     for (o, &z) in out.iter_mut().zip(logits) {
         let e = alice_det_math::exp64(f64::from(z) / temperature - max);
