@@ -233,7 +233,10 @@ mod tests {
         assert_eq!(clamp(0.0, -1.0, -0.0).to_bits(), (-0.0f32).to_bits());
         assert_eq!(clamp(5.0, -1.0, 1.0), 1.0);
         assert_eq!(clamp(-5.0, -1.0, 1.0), -1.0);
-        assert_eq!(clamp64(f64::NAN, -1.0, 1.0).to_bits(), f64::NAN.to_bits());
+        assert_eq!(
+            clamp64(f64::from_bits(0x7ff4_0000_0000_0001), -1.0, 1.0).to_bits(),
+            f64::NAN.to_bits()
+        );
         assert_eq!(clamp64(-0.0, 0.0, 1.0).to_bits(), 0.0f64.to_bits());
     }
 

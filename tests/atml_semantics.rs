@@ -5,6 +5,7 @@
 use alice_ml::model_io::{ArchiveError, LegacyPolicy, ModelArchive, Provenance, FORMAT_VERSION};
 use alice_ml::ops::TernaryWeight;
 use alice_ml::semantics::ML_SEMANTICS_ID;
+use alice_ml::streaming::{LayerStreamer, StreamerConfig};
 
 fn archive() -> ModelArchive {
     let mut a = ModelArchive::new();
@@ -70,8 +71,15 @@ fn another_identifier_is_the_mismatch_naming_both() {
             expected: ML_SEMANTICS_ID
         }
     );
-    // the lenient reader does not take it either, and the message names both
-    assert!(ModelArchive::deserialize(&bytes).is_none());
+    // the streaming reader returns the same error, not a silent failure
+    assert_eq!(
+        LayerStreamer::from_bytes(&bytes, StreamerConfig::default(), LegacyPolicy::Accept).err(),
+        Some(ArchiveError::SemanticsMismatch {
+            stored,
+            expected: ML_SEMANTICS_ID
+        })
+    );
+    // and the message names both
     let msg = err.to_string();
     assert!(
         msg.contains(&format!("{:02x}{:02x}", stored[0], stored[1])),
@@ -98,7 +106,16 @@ fn a_version_1_file_is_legacy_or_refused() {
         ModelArchive::read(&v1, LegacyPolicy::Refuse).err(),
         Some(ArchiveError::LegacyRefused)
     );
-    assert!(ModelArchive::deserialize(&v1).is_some());
+    // through the streaming reader: legacy is visible, and refused when asked
+    let (streamer, provenance) =
+        LayerStreamer::from_bytes(&v1, StreamerConfig::default(), LegacyPolicy::Accept)
+            .expect("v1 accepted");
+    assert_eq!(provenance, Provenance::V1Legacy);
+    assert_eq!(streamer.layer_count(), 1);
+    assert_eq!(
+        LayerStreamer::from_bytes(&v1, StreamerConfig::default(), LegacyPolicy::Refuse).err(),
+        Some(ArchiveError::LegacyRefused)
+    );
 }
 
 #[test]

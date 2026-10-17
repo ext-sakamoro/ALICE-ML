@@ -324,6 +324,25 @@ fn moe_router_ties() {
         .map(|c| c.expert_id)
         .collect();
     assert_eq!(ids, [2, 0, 1], "the NaN score last");
+    // ties among distinct values, past the length where an unstable sort stops behaving
+    // like an insertion sort (20): equal scores keep the expert order (a stable sort)
+    let n = 64;
+    let router = MoeRouter::new(identity(n), n, n);
+    let mut gate = vec![0.0f32; n];
+    let scores: Vec<f32> = (0..n)
+        .map(|i| [0.5f32, 2.0, 1.0][(i * 7 + i / 5) % 3])
+        .collect();
+    let ids: Vec<usize> = router
+        .route(&scores, &mut gate)
+        .iter()
+        .map(|c| c.expert_id)
+        .collect();
+    let mut want: Vec<usize> = (0..n).collect();
+    want.sort_by(|&a, &b| scores[b].total_cmp(&scores[a]).then(a.cmp(&b)));
+    assert_eq!(
+        ids, want,
+        "{n} scores of three values: ties in expert order"
+    );
 }
 
 /// The predicted class of a reliability observation is the argmax of the distribution:

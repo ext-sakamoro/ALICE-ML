@@ -1072,7 +1072,9 @@ mod ternary_llama {
         let m = model(projs);
         assert_eq!(m.memory_bytes(), expected_bytes);
         let atml = m.save_atml();
-        let archive = ModelArchive::deserialize(&atml).expect("atml parses");
+        let archive = ModelArchive::read(&atml, alice_ml::model_io::LegacyPolicy::Refuse)
+            .expect("atml parses")
+            .0;
         // output_proj + 7 per layer
         assert!(archive.get_layer(7).is_some());
         assert!(archive.get_layer(8).is_none());

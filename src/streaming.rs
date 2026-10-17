@@ -24,7 +24,7 @@
 //!
 //! ```rust
 //! use alice_ml::streaming::{LayerStreamer, StreamerConfig};
-//! use alice_ml::model_io::ModelArchive;
+//! use alice_ml::model_io::{LegacyPolicy, ModelArchive, Provenance};
 //! use alice_ml::ops::TernaryWeight;
 //!
 //! // モデルをシリアライズ
@@ -37,7 +37,9 @@
 //!
 //! // ストリーマーを構築
 //! let config = StreamerConfig { max_hot_layers: 1 };
-//! let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+//! let (mut streamer, provenance) =
+//!     LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse).unwrap();
+//! assert_eq!(provenance, Provenance::Verified);
 //!
 //! // レイヤー 0 をロード
 //! let layer0 = streamer.load_layer(0).unwrap();
@@ -54,7 +56,7 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-use crate::model_io::{ModelArchive, SerializedLayer};
+use crate::model_io::{ArchiveError, LegacyPolicy, ModelArchive, Provenance, SerializedLayer};
 use crate::ops::TernaryWeight;
 
 // ============================================================================
@@ -154,11 +156,20 @@ pub struct LayerStreamer {
 impl LayerStreamer {
     /// シリアライズ済みバイト列からストリーマーを構築。
     ///
+    /// The bytes are read by [`ModelArchive::read`] under `legacy`: the returned
+    /// [`Provenance`] says whether the recorded semantics identifier was verified, or
+    /// that the file is version 1 (no identifier).
+    ///
     /// # Errors
-    /// デシリアライズに失敗した場合 `None` を返す。
-    #[must_use]
-    pub fn from_bytes(data: &[u8], config: StreamerConfig) -> Option<Self> {
-        let archive = ModelArchive::deserialize(data)?;
+    ///
+    /// The [`ArchiveError`] of [`ModelArchive::read`], a semantics mismatch naming both
+    /// identifiers included.
+    pub fn from_bytes(
+        data: &[u8],
+        config: StreamerConfig,
+        legacy: LegacyPolicy,
+    ) -> Result<(Self, Provenance), ArchiveError> {
+        let (archive, provenance) = ModelArchive::read(data, legacy)?;
         let layer_count = archive.layer_count();
 
         let slots = (0..layer_count)
@@ -170,14 +181,17 @@ impl LayerStreamer {
             })
             .collect();
 
-        Some(Self {
-            archive,
-            slots,
-            config,
-            hot_count: 0,
-            global_clock: 0,
-            stats: StreamerStats::default(),
-        })
+        Ok((
+            Self {
+                archive,
+                slots,
+                config,
+                hot_count: 0,
+                global_clock: 0,
+                stats: StreamerStats::default(),
+            },
+            provenance,
+        ))
     }
 
     /// `ModelArchive` から直接構築。
@@ -414,7 +428,9 @@ mod tests {
     fn test_from_bytes() {
         let (_, data) = make_test_archive(4);
         let config = StreamerConfig { max_hot_layers: 2 };
-        let streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         assert_eq!(streamer.layer_count(), 4);
         assert_eq!(streamer.hot_count(), 0);
@@ -422,8 +438,9 @@ mod tests {
 
     #[test]
     fn test_from_bytes_invalid() {
-        let result = LayerStreamer::from_bytes(b"garbage", StreamerConfig::default());
-        assert!(result.is_none());
+        let result =
+            LayerStreamer::from_bytes(b"garbage", StreamerConfig::default(), LegacyPolicy::Accept);
+        assert_eq!(result.err(), Some(ArchiveError::TooShort));
     }
 
     #[test]
@@ -437,7 +454,9 @@ mod tests {
     fn test_load_single_layer() {
         let (_, data) = make_test_archive(2);
         let config = StreamerConfig { max_hot_layers: 2 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         let w = streamer.load_layer(0).unwrap();
         assert_eq!(w.out_features(), 2);
@@ -451,7 +470,9 @@ mod tests {
     fn test_load_hot_hit() {
         let (_, data) = make_test_archive(2);
         let config = StreamerConfig { max_hot_layers: 2 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         streamer.load_layer(0).unwrap();
         streamer.load_layer(0).unwrap(); // ヒット
@@ -464,7 +485,9 @@ mod tests {
     fn test_lru_eviction() {
         let (_, data) = make_test_archive(3);
         let config = StreamerConfig { max_hot_layers: 2 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         streamer.load_layer(0).unwrap(); // Hot: [0]
         streamer.load_layer(1).unwrap(); // Hot: [0, 1]
@@ -482,7 +505,9 @@ mod tests {
     fn test_lru_respects_access_order() {
         let (_, data) = make_test_archive(3);
         let config = StreamerConfig { max_hot_layers: 2 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         streamer.load_layer(0).unwrap(); // clock=1
         streamer.load_layer(1).unwrap(); // clock=2
@@ -499,7 +524,9 @@ mod tests {
     fn test_evict_layer() {
         let (_, data) = make_test_archive(2);
         let config = StreamerConfig { max_hot_layers: 2 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         streamer.load_layer(0).unwrap();
         assert!(streamer.is_hot(0));
@@ -513,7 +540,9 @@ mod tests {
     fn test_evict_cold_noop() {
         let (_, data) = make_test_archive(2);
         let config = StreamerConfig { max_hot_layers: 2 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         // Cold レイヤーの退去は何もしない
         streamer.evict_layer(0);
@@ -524,7 +553,9 @@ mod tests {
     fn test_evict_all() {
         let (_, data) = make_test_archive(3);
         let config = StreamerConfig { max_hot_layers: 3 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         streamer.load_layer(0).unwrap();
         streamer.load_layer(1).unwrap();
@@ -540,7 +571,9 @@ mod tests {
     fn test_prefetch_layer() {
         let (_, data) = make_test_archive(2);
         let config = StreamerConfig { max_hot_layers: 2 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         assert!(streamer.prefetch_layer(0));
         assert!(streamer.is_hot(0));
@@ -554,7 +587,9 @@ mod tests {
     fn test_prefetch_out_of_range() {
         let (_, data) = make_test_archive(2);
         let config = StreamerConfig { max_hot_layers: 2 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         assert!(!streamer.prefetch_layer(99));
     }
@@ -563,7 +598,9 @@ mod tests {
     fn test_load_out_of_range() {
         let (_, data) = make_test_archive(2);
         let config = StreamerConfig { max_hot_layers: 2 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         assert!(streamer.load_layer(99).is_none());
     }
@@ -572,7 +609,9 @@ mod tests {
     fn test_slot_state() {
         let (_, data) = make_test_archive(2);
         let config = StreamerConfig { max_hot_layers: 2 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         assert_eq!(streamer.slot_state(0), Some(SlotState::Cold));
         streamer.load_layer(0).unwrap();
@@ -597,7 +636,9 @@ mod tests {
     fn test_hot_memory_bytes() {
         let (_, data) = make_test_archive(3);
         let config = StreamerConfig { max_hot_layers: 3 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         assert_eq!(streamer.hot_memory_bytes(), 0);
 
@@ -614,7 +655,9 @@ mod tests {
     fn test_total_model_bytes() {
         let (_, data) = make_test_archive(3);
         let config = StreamerConfig { max_hot_layers: 3 };
-        let streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         // 各レイヤーは 2x2 = 4 weights → 1 packed byte
         assert_eq!(streamer.total_model_bytes(), 3);
@@ -630,7 +673,9 @@ mod tests {
     fn test_reload_after_eviction() {
         let (_, data) = make_test_archive(2);
         let config = StreamerConfig { max_hot_layers: 1 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         streamer.load_layer(0).unwrap();
         streamer.load_layer(1).unwrap(); // 0 退去
@@ -652,7 +697,9 @@ mod tests {
         let data = archive.serialize();
 
         let config = StreamerConfig { max_hot_layers: 1 };
-        let mut streamer = LayerStreamer::from_bytes(&data, config).unwrap();
+        let mut streamer = LayerStreamer::from_bytes(&data, config, LegacyPolicy::Refuse)
+            .unwrap()
+            .0;
 
         let loaded = streamer.load_layer(0).unwrap();
 
