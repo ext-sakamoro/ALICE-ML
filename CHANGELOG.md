@@ -4,6 +4,10 @@ All notable changes to ALICE-ML will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-17
+
+ALICE-Law の wave: G1 (pyo3 の lint)、G2 (最大・最小・clamp と tie 規則)、G6 (`ML_SEMANTICS_ID`)、G7 (型が消える境界)、G8 (ATML version 2)、G13 (順序の決まらない集合と並列の禁止) 永続化の形式が変わる (ATML version 2、G9 の規則で major) ので 0.3 から上げる
+
 ### Added
 - ALICE-Law G7: 型が消える境界 (C ABI 67、Python 13、byte の reader 4、`dyn Any` 1、alice-db の呼び出し 1) を `src/` から数え、それぞれ他の Law を持つ crate の値を受け取らない理由と件数を固定する `tests/g7_boundaries.rs` を足した 新しい境界・`build.rs`・procedural macro・他の alice-* crate の decoder の呼び出しが現れると失敗し、source を 1 つも読まなければ失敗する
 - ALICE-Law G13: `clippy.toml` で `std::collections::HashMap` / `HashSet` を禁止した (canary 68 行) 並列の float 経路 `ops::ternary_matmul_batch` (`parallel`) が 1・2・8 thread で直列の matvec と同じ bit になることを確かめ、`src/` に他の rayon の site が現れたら失敗する `tests/parallel_order.rs` を足した (CI は `run_tests.sh parallel_order=2` で件数も見る)
