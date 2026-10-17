@@ -53,6 +53,10 @@ jobs:
       # test file is empty without `parallel`, so its count is required
       - name: Thread-count independence of the parallel batch
         run: scripts/run_tests.sh parallel_order=2 -- cargo test --features parallel --test parallel_order
+      # ALICE-Law G4, debug x86_64: the signed-zero / exact-cancellation bits of the Law sites
+      # (tests/float_edge_golden.rs) and the lattice digests; the counts make an empty run fail
+      - name: Law edge goldens (debug, full native feature set)
+        run: scripts/run_tests.sh float_edge_golden=2,determinism_golden -- cargo test --features "$NATIVE_FEATURES" --test float_edge_golden --test determinism_golden
       # ALICE-Law G3, syntax-tree pre-check (tools/no-outer-fneg-of-fma, byte-identical to
       # ALICE-LOL's, built with --locked): its own tests, then the check over src/ tests/
       # examples/ benches/ with the exact fma-call counts of
@@ -119,6 +123,9 @@ jobs:
         run: cargo clippy --features "$NATIVE_FEATURES,neon" --all-targets -- -W clippy::pedantic -W clippy::nursery -D warnings
       - name: Test (neon)
         run: cargo test --lib --tests --features "$NATIVE_FEATURES,neon"
+      # ALICE-Law G4, debug aarch64: the same goldens on this runner
+      - name: Law edge goldens (debug, aarch64, neon)
+        run: scripts/run_tests.sh float_edge_golden=2,determinism_golden -- cargo test --features "$NATIVE_FEATURES,neon" --test float_edge_golden --test determinism_golden
 
   no_std:
     name: no_std (rlib、host + bare-metal thumbv7em)

@@ -223,6 +223,10 @@ step "ci.yml / float-environment: Float environment (debug and release)"
 scripts/run_tests.sh float_environment=2 -- cargo test --test float_environment
 scripts/run_tests.sh float_environment=2 -- cargo test --release --test float_environment
 
+step "ci.yml test / neon + release-profile.yml: Law edge goldens (debug and release, full native feature set)"
+scripts/run_tests.sh float_edge_golden=2,determinism_golden -- cargo test --features "ffi,simd,parallel,safetensors,db" --test float_edge_golden --test determinism_golden
+scripts/run_tests.sh float_edge_golden=2,determinism_golden -- cargo test --release --features "ffi,simd,parallel,safetensors,db" --test float_edge_golden --test determinism_golden
+
 step "ci.yml / float-environment: Effective rustc flags (default, full native feature set, no default features)"
 python3 scripts/build_flags_check.py -- cargo check --release --lib
 python3 scripts/build_flags_check.py -- cargo check --release --lib --features "ffi,simd,parallel,safetensors,db"

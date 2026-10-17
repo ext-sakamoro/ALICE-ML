@@ -1,0 +1,66 @@
+name: Release profile
+
+# ALICE-Law G4 / G5: the Law goldens under the release profile (`opt-level = 3`, no
+# debug assertions). The optimiser may not re-associate, contract or reorder IEEE
+# arithmetic, so the bits pinned in tests/float_edge_golden.rs (signed zeros, exact
+# cancellations of the Law sites) and the lattice digests of tests/determinism_golden.rs
+# must equal the debug build's. ci.yml runs them in debug. scripts/run_tests.sh fails a
+# step when no test ran or a named file ran fewer than its minimum. Mirrored in
+# scripts/preflight.sh.
+#
+# Legs: macos-latest is aarch64-apple-darwin, the leg that executes hardware fma
+# instructions; ubuntu-latest is x86_64-unknown-linux-gnu. The x86_64 leg is not
+# claimed to cover the AVX2 lanes: they are taken only when the runner reports avx2
+# (the first step prints the CPU features), and their own lane test is ci.yml's.
+on:
+  push:
+    # ci/**: the same check on a branch before it is fast-forwarded to main
+    branches: [main, 'ci/**']
+  pull_request:
+    branches: [main]
+
+# on main each commit has a group of its own and a run there is never
+# cancelled; a newer run cancels an older one only off main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # full native feature set (pyo3 links a Python interpreter, neon is aarch64 only)
+  NATIVE_FEATURES: "ffi,simd,parallel,safetensors,db"
+
+jobs:
+  release-golden:
+    name: Law goldens, release profile (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: CPU and target of this leg
+        shell: bash
+        run: |
+          rustc -vV | grep -E '^(host|release):'
+          if [ "$(uname -s)" = Linux ]; then
+            echo "x86_64 CPU flags of interest: $(grep -m1 '^flags' /proc/cpuinfo | tr ' ' '\n' | grep -x -E 'avx2|fma|avx512f' | tr '\n' ' ')"
+          else
+            sysctl -n machdep.cpu.brand_string
+            sysctl hw.optional.neon hw.optional.arm.FEAT_FP16 2>/dev/null || true
+          fi
+      - name: Law goldens (release, default features)
+        run: scripts/run_tests.sh float_edge_golden=2,determinism_golden -- cargo test --release --test float_edge_golden --test determinism_golden
+      - name: Law goldens (release, full native feature set)
+        if: runner.os == 'Linux'
+        run: scripts/run_tests.sh float_edge_golden=2,determinism_golden -- cargo test --release --features "$NATIVE_FEATURES" --test float_edge_golden --test determinism_golden
+      - name: Law goldens (release, full native feature set + neon)
+        if: runner.os == 'macOS'
+        run: scripts/run_tests.sh float_edge_golden=2,determinism_golden -- cargo test --release --features "$NATIVE_FEATURES,neon" --test float_edge_golden --test determinism_golden
