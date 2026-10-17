@@ -126,6 +126,10 @@ reference_repo = "ALICE-DB"
 
 [G9]
 status = "unverified"
+evidence = [
+    "scripts/id_move_check.py (shared with the other ALICE crates that carry an identifier; tests scripts/test_id_move_check.py; config scripts/id_move.toml): builds a probe against the published release of the newest release tag (alice-ml 0.2.0 today) and against the working tree, reads semantics::ML_SEMANTICS_ID (stamped into ATML version 2 and the streaming form) as a value and fails when it moved without a breaking version, without the released value in PREVIOUS_ML_SEMANTICS_IDS, or without CHANGELOG.md naming both; every const / static / associated const of type [u8; 32] and every public re-export of another crate's constant must be listed or exempt; .github/workflows/ci.yml clippy job and scripts/preflight.sh; today: ML_SEMANTICS_ID a5472370 is new since 0.2.0",
+]
+mutant = "measured 2026-10-17, reverted: scripts/id_move.toml naming another path makes scripts/id_move_check.py exit 1 (`ML_SEMANTICS_ID (src/semantics.rs:138): a [u8; 32] item that is neither an [[id]] ...`)"
 note = "the identifier exists from 0.4.0 (ML_SEMANTICS_ID, G6) and ATML records it (G8); 0.4.0 changes the persisted meaning (ATML version 2) and is a 0.x major step, but the audit of the identifier's history that G9 asks for is not done here"
 
 [G10]

@@ -1,0 +1,10 @@
+# scripts/id_move_check.py (ALICE-Law G9): the identifiers whose value may move only with a
+# breaking version, the previous-identifier list that must keep the released value, and the
+# release tags the base is read from (its values come from the published crate)
+package = "alice-ml"
+manifest = "Cargo.toml"
+tags = ["v{version}", "alice-ml-v{version}"]
+
+[[id]]
+path = "alice_ml::semantics::ML_SEMANTICS_ID"
+previous = "alice_ml::semantics::PREVIOUS_ML_SEMANTICS_IDS"
