@@ -11,6 +11,10 @@ All notable changes to ALICE-ML will be documented in this file.
 - CI: README の ALICE-Law 節の検査 (law-readme-block.yml) を preflight でも同じに走らせる `scripts/law_readme_block_check.py` と試験 `scripts/test_law_readme_block_check.py` を足した (ALICE-DB と同じ中身の共有 file、workflow の check の引数と節の pin の生成器を使い、比較 0 件・件数の行なし・pin が無い・fetch の失敗は失敗、未 commit の入力は検査していないと表示) 試験は CI と preflight で走る
 - CI (ALICE-Law G3): fma の結果全体を negate する形の検査を追加 (ALICE-LOL と同一の構文木の前段検査 `tools/no-outer-fneg-of-fma` を `--locked` で、最適化後の LLVM IR の検査 `scripts/fneg_fma_ir_check.py` と試験、47 個の probe) library の source に fma の呼び出しは無く、test に 2 件 (どちらも negate しない)、`assert!` の中の 1 件は理由付きで allowlist に置いた IR の検査は新しい `.github/workflows/g3-ir.yml` が x86_64 (ubuntu-latest) と aarch64 (ubuntu-24.04-arm) の実機 runner で実行する (pyo3 は cross build できない) 実行可否は `scripts/changed_paths.py` (ALICE-DetMath と同一) と `.github/paths/g3-ir.txt` で merge-base(origin/main) から決め、走るべき job が走らなかった時は gate job が red になる `.gitignore` で検査器の `Cargo.lock` を追跡対象にした `alice-law-conformance.toml` の G3 を unverified から pass にした
 
+### Changed
+
+- CI (ALICE-Law G3): `tools/no-outer-fneg-of-fma` と `scripts/fneg_fma_ir_check.py` (と試験) を ALICE-LOL と同じ新しい版にした `expected-src-fma-calls` は src/ の library code の fma 呼び出し数 (`#[test]` と test の時だけ成り立つ cfg の下の item と文、test-only の `mod y;` で読み込む file とその子は数えず、test-only の数を別に表示する) この repository の数は変わらない IR 検査は library の source に fma が無いのに IR に fma がある時を失敗にし、library の fma が 0 の時は共有の probe を target ごとに compile して判定を確かめる (0 件実行は失敗) tool は独自の workspace なので repository 全体の format 検査に入っていなかった CI と preflight に tool の format の検査を足した ci.yml は `ci/**` の branch の push でも走るようにした (他の crate と同じ、main に入れる前に同じ検査を branch で走らせる)
+
 ## [0.4.0] - 2026-10-17
 
 ALICE-Law の wave: G1 (pyo3 の lint)、G2 (最大・最小・clamp と tie 規則)、G6 (`ML_SEMANTICS_ID`)、G7 (型が消える境界)、G8 (ATML version 2)、G13 (順序の決まらない集合と並列の禁止) 永続化の形式が変わる (ATML version 2、G9 の規則で major) ので 0.3 から上げる
