@@ -13,6 +13,8 @@
 //! `ALICE_ML_PRINT_EDGE_BITS=1 cargo test --test float_edge_golden -- --nocapture` prints
 //! the measured values instead of asserting them (used once to record the table).
 
+use std::hint::black_box;
+
 use alice_ml::calibration::{negative_log_likelihood, TemperatureScaling};
 use alice_ml::law_math::{argmax, clamp, max, max64, max_of, min, min64, min_of, relu};
 use alice_ml::tensor::{tensor_max, tensor_min, tensor_softmax, tensor_softmax_fast, Tensor};
@@ -23,7 +25,7 @@ const PZ: f32 = 0.0;
 
 fn softmax(logits: &[f32], fast: bool) -> Vec<u32> {
     let n = logits.len();
-    let mut input = logits.to_vec();
+    let mut input = black_box(logits.to_vec());
     let mut output = vec![0.0_f32; n];
     {
         let a = Tensor::from_arena(&mut input, &[1, n]);
@@ -38,7 +40,7 @@ fn softmax(logits: &[f32], fast: bool) -> Vec<u32> {
 }
 
 fn reduce(values: &[f32], f: impl FnOnce(&Tensor) -> f32) -> f32 {
-    let mut data = values.to_vec();
+    let mut data = black_box(values.to_vec());
     let n = data.len();
     let t = Tensor::from_arena(&mut data, &[n]);
     f(&t)
@@ -53,7 +55,7 @@ fn temperature_identity(logits: &[f32]) -> Vec<u32> {
 }
 
 fn cross_entropy_uniform(n: usize) -> u32 {
-    let logits = vec![3.5_f32; n];
+    let logits = black_box(vec![3.5_f32; n]);
     let mut targets = vec![0.0_f32; n];
     targets[0] = 1.0;
     let mut grad = vec![0.0_f32; n];
@@ -64,41 +66,65 @@ fn cross_entropy_uniform(n: usize) -> u32 {
 
 /// `(case, measured bits as u64)`: f32 results widened, f64 results as they are, index results as the index
 fn measured() -> Vec<(&'static str, u64)> {
+    // every input goes through black_box: the release legs must run the emitted comparisons
+    // and arithmetic, not a value the optimiser folded at compile time
+    let (nz, pz) = (black_box(NZ), black_box(PZ));
     let f = |x: f32| u64::from(x.to_bits());
     let mut v: Vec<(&'static str, u64)> = vec![
-        ("max(-0, +0)", f(max(NZ, PZ))),
-        ("max(+0, -0)", f(max(PZ, NZ))),
-        ("min(-0, +0)", f(min(NZ, PZ))),
-        ("min(+0, -0)", f(min(PZ, NZ))),
-        ("max64(-0, +0)", max64(-0.0, 0.0).to_bits()),
-        ("max64(+0, -0)", max64(0.0, -0.0).to_bits()),
-        ("min64(-0, +0)", min64(-0.0, 0.0).to_bits()),
-        ("min64(+0, -0)", min64(0.0, -0.0).to_bits()),
-        ("relu(-0)", f(relu(NZ))),
-        ("relu(+0)", f(relu(PZ))),
-        ("relu(-1)", f(relu(-1.0))),
-        ("clamp(-0, -1, 1)", f(clamp(NZ, -1.0, 1.0))),
-        ("clamp(+0, -1, 1)", f(clamp(PZ, -1.0, 1.0))),
-        ("clamp(-0, +0, 1)", f(clamp(NZ, 0.0, 1.0))),
-        ("clamp(+0, -1, -0)", f(clamp(PZ, -1.0, NZ))),
-        ("max_of([-0, +0])", f(max_of(&[NZ, PZ]))),
-        ("max_of([+0, -0])", f(max_of(&[PZ, NZ]))),
-        ("min_of([-0, +0])", f(min_of(&[NZ, PZ]))),
-        ("min_of([+0, -0])", f(min_of(&[PZ, NZ]))),
-        ("argmax([-0, +0])", argmax(&[NZ, PZ]) as u64),
-        ("argmax([+0, -0])", argmax(&[PZ, NZ]) as u64),
-        ("argmax([1, 1])", argmax(&[1.0, 1.0]) as u64),
+        ("max(-0, +0)", f(max(nz, pz))),
+        ("max(+0, -0)", f(max(pz, nz))),
+        ("min(-0, +0)", f(min(nz, pz))),
+        ("min(+0, -0)", f(min(pz, nz))),
+        (
+            "max64(-0, +0)",
+            max64(black_box(-0.0), black_box(0.0)).to_bits(),
+        ),
+        (
+            "max64(+0, -0)",
+            max64(black_box(0.0), black_box(-0.0)).to_bits(),
+        ),
+        (
+            "min64(-0, +0)",
+            min64(black_box(-0.0), black_box(0.0)).to_bits(),
+        ),
+        (
+            "min64(+0, -0)",
+            min64(black_box(0.0), black_box(-0.0)).to_bits(),
+        ),
+        ("relu(-0)", f(relu(nz))),
+        ("relu(+0)", f(relu(pz))),
+        ("relu(-1)", f(relu(black_box(-1.0)))),
+        (
+            "clamp(-0, -1, 1)",
+            f(clamp(nz, black_box(-1.0), black_box(1.0))),
+        ),
+        (
+            "clamp(+0, -1, 1)",
+            f(clamp(pz, black_box(-1.0), black_box(1.0))),
+        ),
+        (
+            "clamp(-0, +0, 1)",
+            f(clamp(nz, black_box(0.0), black_box(1.0))),
+        ),
+        ("clamp(+0, -1, -0)", f(clamp(pz, black_box(-1.0), nz))),
+        ("max_of([-0, +0])", f(max_of(&[nz, pz]))),
+        ("max_of([+0, -0])", f(max_of(&[pz, nz]))),
+        ("min_of([-0, +0])", f(min_of(&[nz, pz]))),
+        ("min_of([+0, -0])", f(min_of(&[pz, nz]))),
+        ("argmax([-0, +0])", argmax(&[nz, pz]) as u64),
+        ("argmax([+0, -0])", argmax(&[pz, nz]) as u64),
+        ("argmax([1, 1])", argmax(&black_box([1.0, 1.0])) as u64),
         (
             "tensor_max([-0, +0, -0])",
-            f(reduce(&[NZ, PZ, NZ], tensor_max)),
+            f(reduce(&[nz, pz, nz], tensor_max)),
         ),
         (
             "tensor_min([+0, -0, +0])",
-            f(reduce(&[PZ, NZ, PZ], tensor_min)),
+            f(reduce(&[pz, nz, pz], tensor_min)),
         ),
         (
             "nll([0.25; 4], 0)",
-            f(negative_log_likelihood(&[0.25; 4], 0).expect("distribution")),
+            f(negative_log_likelihood(&black_box([0.25; 4]), 0).expect("distribution")),
         ),
         (
             "cross_entropy(equal logits, n = 4)",
@@ -114,10 +140,10 @@ fn measured() -> Vec<(&'static str, u64)> {
         ("softmax_fast([5; 4])", softmax(&[5.0; 4], true)),
         ("softmax([1e30; 4])", softmax(&[1e30; 4], false)),
         ("softmax_fast([1e30; 4])", softmax(&[1e30; 4], true)),
-        ("softmax([-0, +0])", softmax(&[NZ, PZ], false)),
-        ("softmax_fast([-0, +0])", softmax(&[NZ, PZ], true)),
+        ("softmax([-0, +0])", softmax(&[nz, pz], false)),
+        ("softmax_fast([-0, +0])", softmax(&[nz, pz], true)),
         ("temperature(1)([7; 4])", temperature_identity(&[7.0; 4])),
-        ("temperature(1)([-0, +0])", temperature_identity(&[NZ, PZ])),
+        ("temperature(1)([-0, +0])", temperature_identity(&[nz, pz])),
         (
             "temperature(1)([1e30; 4])",
             temperature_identity(&[1e30; 4]),
