@@ -192,7 +192,7 @@ pub fn brier_multiclass(probs: &[f32], label: usize) -> Result<f32, CalibrationE
 /// As [`brier_multiclass`]
 pub fn negative_log_likelihood(probs: &[f32], label: usize) -> Result<f32, CalibrationError> {
     check_distribution(probs, label)?;
-    let p = f64::from(probs[label]).max(MIN_PROBABILITY);
+    let p = crate::law_math::max64(f64::from(probs[label]), MIN_PROBABILITY);
     Ok((-alice_det_math::ln64(p)) as f32)
 }
 
@@ -274,12 +274,7 @@ impl ReliabilityBins {
         label: usize,
     ) -> Result<(), CalibrationError> {
         check_distribution(probs, label)?;
-        let mut best = 0;
-        for (k, p) in probs.iter().enumerate().skip(1) {
-            if *p > probs[best] {
-                best = k;
-            }
-        }
+        let best = crate::law_math::argmax(probs);
         self.observe(probs[best], best == label)
     }
 
@@ -359,9 +354,7 @@ impl ReliabilityBins {
             }
             let n = f64::from(count);
             let gap = (f64::from(correct) / n - confidence_sum / n).abs();
-            if gap > worst {
-                worst = gap;
-            }
+            worst = crate::law_math::max64(worst, gap);
         }
         worst as f32
     }
@@ -373,13 +366,10 @@ impl ReliabilityBins {
 
 /// `softmax(logits / temperature)` into `out`
 fn softmax_scaled(logits: &[f32], temperature: f64, out: &mut [f64]) {
-    let mut max = f64::NEG_INFINITY;
-    for &z in logits {
-        let scaled = f64::from(z) / temperature;
-        if scaled > max {
-            max = scaled;
-        }
-    }
+    let max = logits
+        .iter()
+        .map(|&z| f64::from(z) / temperature)
+        .fold(f64::NEG_INFINITY, crate::law_math::max64);
     let mut total = 0.0_f64;
     for (o, &z) in out.iter_mut().zip(logits) {
         let e = alice_det_math::exp64(f64::from(z) / temperature - max);
@@ -421,7 +411,7 @@ fn mean_nll(samples: &[(&[f32], usize)], t: f64) -> f64 {
         scratch.clear();
         scratch.resize(logits.len(), 0.0);
         softmax_scaled(logits, t, &mut scratch);
-        acc -= alice_det_math::ln64(scratch[*label].max(MIN_PROBABILITY));
+        acc -= alice_det_math::ln64(crate::law_math::max64(scratch[*label], MIN_PROBABILITY));
     }
     acc / samples.len() as f64
 }

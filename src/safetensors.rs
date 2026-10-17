@@ -3,11 +3,13 @@
 //! Reads safetensors files (HuggingFace standard) and converts
 //! BF16/FP16/FP32 tensors for ternary quantization.
 
+// the tensor table is a BTreeMap in every build: its iteration order (tensor_names) is the
+// key order, not a hash order that differs between runs (ALICE-Law G13)
 #[cfg(feature = "std")]
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[cfg(not(feature = "std"))]
-use alloc::{collections::BTreeMap as HashMap, string::String, vec, vec::Vec};
+use alloc::{collections::BTreeMap, string::String, vec, vec::Vec};
 
 // ─── Half-precision conversion ──────────────────────────────────────────────
 
@@ -299,12 +301,12 @@ impl<'a> JsonParser<'a> {
     }
 
     /// Parse the top-level object: {"__metadata__":{...}, "`tensor_name"`:{...}, ...}
-    fn parse_header(&mut self) -> Option<HashMap<String, TensorDesc>> {
+    fn parse_header(&mut self) -> Option<BTreeMap<String, TensorDesc>> {
         if !self.consume(b'{') {
             return None;
         }
 
-        let mut tensors = HashMap::new();
+        let mut tensors = BTreeMap::new();
 
         loop {
             self.skip_whitespace();
@@ -336,7 +338,7 @@ impl<'a> JsonParser<'a> {
 /// A parsed safetensors file with zero-copy data access.
 pub struct SafetensorsFile<'a> {
     /// Tensor descriptors keyed by name.
-    pub tensors: HashMap<String, TensorDesc>,
+    pub tensors: BTreeMap<String, TensorDesc>,
     /// Raw tensor data section.
     data: &'a [u8],
 }
@@ -368,7 +370,7 @@ impl<'a> SafetensorsFile<'a> {
         Some(Self { tensors, data })
     }
 
-    /// List all tensor names.
+    /// List all tensor names, in key order (byte order of the names, the same in every run).
     #[must_use]
     pub fn tensor_names(&self) -> Vec<&str> {
         self.tensors

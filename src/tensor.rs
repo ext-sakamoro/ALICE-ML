@@ -248,9 +248,7 @@ pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
     if crate::ops::has_avx2() {
-        use core::arch::x86_64::{
-            _mm256_loadu_ps, _mm256_max_ps, _mm256_setzero_ps, _mm256_storeu_ps,
-        };
+        use core::arch::x86_64::{_mm256_loadu_ps, _mm256_setzero_ps, _mm256_storeu_ps};
         let n = a.data.len();
         let chunks = n / 8;
         let remainder = n % 8;
@@ -262,19 +260,19 @@ pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
             for i in 0..chunks {
                 let offset = i * 8;
                 let va = _mm256_loadu_ps(a.data.as_ptr().add(offset));
-                let vr = _mm256_max_ps(va, zero);
+                let vr = crate::law_math::max_ps(va, zero);
                 _mm256_storeu_ps(out.data.as_mut_ptr().add(offset), vr);
             }
         }
         let tail = chunks * 8;
         for i in 0..remainder {
-            out.data[tail + i] = a.data[tail + i].max(0.0);
+            out.data[tail + i] = crate::law_math::relu(a.data[tail + i]);
         }
         return;
     }
 
     for (o, &av) in out.data.iter_mut().zip(a.data.iter()) {
-        *o = av.max(0.0); // branchless: compiles to maxss/maxps
+        *o = crate::law_math::relu(av);
     }
 }
 
@@ -283,9 +281,7 @@ pub fn tensor_relu(a: &Tensor, out: &mut Tensor) {
 pub fn tensor_relu_inplace(a: &mut Tensor) {
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
     if crate::ops::has_avx2() {
-        use core::arch::x86_64::{
-            _mm256_loadu_ps, _mm256_max_ps, _mm256_setzero_ps, _mm256_storeu_ps,
-        };
+        use core::arch::x86_64::{_mm256_loadu_ps, _mm256_setzero_ps, _mm256_storeu_ps};
         let n = a.data.len();
         let chunks = n / 8;
         let remainder = n % 8;
@@ -298,19 +294,19 @@ pub fn tensor_relu_inplace(a: &mut Tensor) {
             for i in 0..chunks {
                 let offset = i * 8;
                 let va = _mm256_loadu_ps(a.data.as_ptr().add(offset));
-                let vr = _mm256_max_ps(va, zero);
+                let vr = crate::law_math::max_ps(va, zero);
                 _mm256_storeu_ps(a.data.as_mut_ptr().add(offset), vr);
             }
         }
         let tail = chunks * 8;
         for i in 0..remainder {
-            a.data[tail + i] = a.data[tail + i].max(0.0);
+            a.data[tail + i] = crate::law_math::relu(a.data[tail + i]);
         }
         return;
     }
 
     for x in a.data.iter_mut() {
-        *x = x.max(0.0); // branchless: compiles to maxss
+        *x = crate::law_math::relu(*x);
     }
 }
 
@@ -333,7 +329,7 @@ pub fn tensor_softmax(a: &Tensor, out: &mut Tensor) {
         let out_slice = &mut out.data[start..end];
 
         // Find max for numerical stability
-        let max_val = in_slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let max_val = crate::law_math::max_of(in_slice);
 
         // Exp and sum
         let mut sum = 0.0f32;
@@ -414,6 +410,7 @@ pub fn tensor_mean(a: &Tensor) -> f32 {
 /// enabled and AVX2 is available at runtime, falling back to a scalar fold
 /// on non-AVX2 / non-x86 targets or for the tail.
 #[inline]
+#[must_use]
 pub fn tensor_max(a: &Tensor) -> f32 {
     let len = a.data.len();
     if len == 0 {
@@ -422,10 +419,7 @@ pub fn tensor_max(a: &Tensor) -> f32 {
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
     if crate::ops::has_avx2() {
-        use core::arch::x86_64::{
-            _mm256_castps256_ps128, _mm256_extractf128_ps, _mm256_loadu_ps, _mm256_max_ps,
-            _mm256_set1_ps, _mm_cvtss_f32, _mm_max_ps, _mm_max_ss, _mm_movehl_ps, _mm_shuffle_ps,
-        };
+        use core::arch::x86_64::{_mm256_loadu_ps, _mm256_set1_ps, _mm256_storeu_ps};
         let chunks = len / 8;
         // SAFETY: AVX2 availability confirmed at runtime via has_avx2().
         // Each load reads exactly 8 consecutive f32 values within a.data bounds:
@@ -434,24 +428,22 @@ pub fn tensor_max(a: &Tensor) -> f32 {
             let mut max_vec = _mm256_set1_ps(f32::NEG_INFINITY);
             for i in 0..chunks {
                 let v = _mm256_loadu_ps(a.data.as_ptr().add(i * 8));
-                max_vec = _mm256_max_ps(max_vec, v);
+                max_vec = crate::law_math::max_ps(max_vec, v);
             }
-            // Horizontal reduction: collapse 256-bit max vector to scalar
-            let hi = _mm256_extractf128_ps(max_vec, 1);
-            let lo = _mm256_castps256_ps128(max_vec);
-            let m = _mm_max_ps(hi, lo);
-            let m = _mm_max_ps(m, _mm_movehl_ps(m, m));
-            let m = _mm_max_ss(m, _mm_shuffle_ps(m, m, 1));
-            let mut result = _mm_cvtss_f32(m);
+            // the 8 lanes folded with the same rule (associative, so the order of
+            // the lanes does not change the result)
+            let mut lanes = [0.0f32; 8];
+            _mm256_storeu_ps(lanes.as_mut_ptr(), max_vec);
+            let mut result = crate::law_math::max_of(&lanes);
             // Scalar tail
             for i in (chunks * 8)..len {
-                result = result.max(a.data[i]);
+                result = crate::law_math::max(result, a.data[i]);
             }
             return result;
         }
     }
 
-    a.data.iter().copied().fold(f32::NEG_INFINITY, f32::max)
+    crate::law_math::max_of(a.data)
 }
 
 /// Minimum element
@@ -460,6 +452,7 @@ pub fn tensor_max(a: &Tensor) -> f32 {
 /// enabled and AVX2 is available at runtime, falling back to a scalar fold
 /// on non-AVX2 / non-x86 targets or for the tail.
 #[inline]
+#[must_use]
 pub fn tensor_min(a: &Tensor) -> f32 {
     let len = a.data.len();
     if len == 0 {
@@ -468,10 +461,7 @@ pub fn tensor_min(a: &Tensor) -> f32 {
 
     #[cfg(all(target_arch = "x86_64", feature = "simd"))]
     if crate::ops::has_avx2() {
-        use core::arch::x86_64::{
-            _mm256_castps256_ps128, _mm256_extractf128_ps, _mm256_loadu_ps, _mm256_min_ps,
-            _mm256_set1_ps, _mm_cvtss_f32, _mm_min_ps, _mm_min_ss, _mm_movehl_ps, _mm_shuffle_ps,
-        };
+        use core::arch::x86_64::{_mm256_loadu_ps, _mm256_set1_ps, _mm256_storeu_ps};
         let chunks = len / 8;
         // SAFETY: AVX2 availability confirmed at runtime via has_avx2().
         // Each load reads exactly 8 consecutive f32 values within a.data bounds:
@@ -480,24 +470,22 @@ pub fn tensor_min(a: &Tensor) -> f32 {
             let mut min_vec = _mm256_set1_ps(f32::INFINITY);
             for i in 0..chunks {
                 let v = _mm256_loadu_ps(a.data.as_ptr().add(i * 8));
-                min_vec = _mm256_min_ps(min_vec, v);
+                min_vec = crate::law_math::min_ps(min_vec, v);
             }
-            // Horizontal reduction: collapse 256-bit min vector to scalar
-            let hi = _mm256_extractf128_ps(min_vec, 1);
-            let lo = _mm256_castps256_ps128(min_vec);
-            let m = _mm_min_ps(hi, lo);
-            let m = _mm_min_ps(m, _mm_movehl_ps(m, m));
-            let m = _mm_min_ss(m, _mm_shuffle_ps(m, m, 1));
-            let mut result = _mm_cvtss_f32(m);
+            // the 8 lanes folded with the same rule (associative, so the order of
+            // the lanes does not change the result)
+            let mut lanes = [0.0f32; 8];
+            _mm256_storeu_ps(lanes.as_mut_ptr(), min_vec);
+            let mut result = crate::law_math::min_of(&lanes);
             // Scalar tail
             for i in (chunks * 8)..len {
-                result = result.min(a.data[i]);
+                result = crate::law_math::min(result, a.data[i]);
             }
             return result;
         }
     }
 
-    a.data.iter().copied().fold(f32::INFINITY, f32::min)
+    crate::law_math::min_of(a.data)
 }
 
 /// Copy data from source to destination
@@ -525,7 +513,7 @@ pub fn tensor_copy(src: &Tensor, dst: &mut Tensor) {
 #[inline(always)]
 fn fast_exp(x: f32) -> f32 {
     // Clamp to avoid overflow (> 88) and flush-to-zero (< -87)
-    let x = x.clamp(-87.0, 88.0);
+    let x = crate::law_math::clamp(x, -87.0, 88.0);
     // Schraudolph's approximation: bit-cast integer to float
     // 12102203.0 ~= 2^23 / ln(2);  1065353216 = 127 << 23 (exponent bias)
     let a = (12_102_203.0_f32 * x + 1_065_353_216.0_f32) as i32;
@@ -558,7 +546,7 @@ pub fn tensor_softmax_fast(a: &Tensor, out: &mut Tensor) {
         let slice = &a.data[start..end];
 
         // Find max for numerical stability
-        let max_val = slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let max_val = crate::law_math::max_of(slice);
 
         // fast_exp and accumulate
         let mut sum = 0.0f32;
@@ -799,15 +787,15 @@ impl QuantizedTensor {
         let max_abs = input
             .iter()
             .map(|x| x.abs())
-            .fold(0.0f32, f32::max)
-            .max(1e-8);
+            .fold(0.0f32, crate::law_math::max);
+        let max_abs = crate::law_math::max(max_abs, 1e-8);
 
         let scale = max_abs / 127.0;
 
         // Quantize
         let quantized: Vec<i8> = input
             .iter()
-            .map(|&x| (x / scale).round().clamp(-127.0, 127.0) as i8)
+            .map(|&x| crate::law_math::clamp((x / scale).round(), -127.0, 127.0) as i8)
             .collect();
 
         let mut shape_arr = [0usize; MAX_DIMS];

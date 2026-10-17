@@ -601,7 +601,7 @@ pub unsafe extern "C" fn am_ml_tensor_min(a: *const f32, len: usize) -> f32 {
         }
         // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
-        sa.iter().copied().fold(f32::INFINITY, f32::min)
+        crate::law_math::min_of(sa)
     })
 }
 
@@ -614,7 +614,7 @@ pub unsafe extern "C" fn am_ml_tensor_max(a: *const f32, len: usize) -> f32 {
         }
         // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many initialised, readable elements that stay valid for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
-        sa.iter().copied().fold(f32::NEG_INFINITY, f32::max)
+        crate::law_math::max_of(sa)
     })
 }
 
@@ -630,7 +630,7 @@ pub unsafe extern "C" fn am_ml_tensor_relu(a: *const f32, out: *mut f32, len: us
         // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
         for (o, &av) in so.iter_mut().zip(sa.iter()) {
-            *o = av.max(0.0);
+            *o = crate::law_math::relu(av);
         }
     });
 }
@@ -645,7 +645,7 @@ pub unsafe extern "C" fn am_ml_tensor_relu_inplace(a: *mut f32, len: usize) {
         // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let sa = unsafe { core::slice::from_raw_parts_mut(a, len) };
         for x in sa.iter_mut() {
-            *x = x.max(0.0);
+            *x = crate::law_math::relu(*x);
         }
     });
 }
@@ -661,7 +661,7 @@ pub unsafe extern "C" fn am_ml_tensor_softmax(a: *const f32, out: *mut f32, len:
         let sa = unsafe { core::slice::from_raw_parts(a, len) };
         // SAFETY: null was rejected above; the caller guarantees the pointer addresses that many writable `f32` not aliased by any other argument for the duration of the call (documented C API contract)
         let so = unsafe { core::slice::from_raw_parts_mut(out, len) };
-        let max_val = sa.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let max_val = crate::law_math::max_of(sa);
         let mut sum = 0.0f32;
         for (o, &x) in so.iter_mut().zip(sa.iter()) {
             *o = alice_det_math::exp(x - max_val);

@@ -303,10 +303,10 @@ pub fn compute_layer_error_propagation(layers: &[LayerConfig]) -> NetworkErrorRe
         // Relative squared Frobenius error (Gaussian weight approximation).
         // Sparsity inflates the error because zeroed weights are completely
         // wrong (they are set to 0 regardless of sign).
-        let sparsity = cfg.sparsity.clamp(0.0, 1.0) as f64;
+        let sparsity = crate::law_math::clamp(cfg.sparsity, 0.0, 1.0) as f64;
         let error_sq_ratio = BASE_ERROR_SQ_RATIO + sparsity * (2.0 / core::f64::consts::PI);
         // Clamp to [0, 1] – cannot exceed 100 % relative error.
-        let error_sq_ratio = error_sq_ratio.min(1.0);
+        let error_sq_ratio = crate::law_math::min64(error_sq_ratio, 1.0);
         let local_error = error_sq_ratio.sqrt(); // ε_i = ||W - Q(W)||_F / ||W||_F
 
         // Integrate into running state

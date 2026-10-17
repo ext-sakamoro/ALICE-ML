@@ -38,7 +38,7 @@ fn clippy_toml_bans_every_g1_method_for_both_widths() {
 
     // Real TOML parsing (not a text search): a commented-out entry is not
     // in `entries` at all, so it can't produce a false "present".
-    let banned_paths: std::collections::HashSet<&str> = entries
+    let banned_paths: std::collections::BTreeSet<&str> = entries
         .iter()
         .filter_map(|entry| entry.get("path").and_then(toml::Value::as_str))
         .collect();

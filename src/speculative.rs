@@ -554,22 +554,11 @@ impl CacheResidentDecoder {
 // Helper
 // ============================================================================
 
-/// スライスの argmax を返す。空なら 0。
+/// スライスの argmax を返す (`crate::law_math::argmax`: 最初の最大値、`+0.0` は `-0.0` に勝ち、NaN は選ばない)。空なら 0。
 #[inline]
 #[must_use]
 fn argmax(slice: &[f32]) -> usize {
-    if slice.is_empty() {
-        return 0;
-    }
-    let mut best_idx = 0;
-    let mut best_val = slice[0];
-    for (i, &v) in slice.iter().enumerate().skip(1) {
-        if v > best_val {
-            best_val = v;
-            best_idx = i;
-        }
-    }
-    best_idx
+    crate::law_math::argmax(slice)
 }
 
 // ============================================================================

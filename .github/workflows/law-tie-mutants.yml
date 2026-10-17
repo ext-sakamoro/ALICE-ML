@@ -1,0 +1,72 @@
+name: Law tie mutants (AVX2)
+
+# ALICE-Law G2, tie rule: every maximum / minimum site inside an AVX2 block of src/tensor.rs
+# (the 8-lane bodies and their scalar tails, which no runner without AVX2 executes) is
+# rewritten, one at a time, as a plain comparison in both operand orders, and the tie tests
+# (tests/law_ties.rs) and the goldens (tests/determinism_golden.rs) must fail on it, except
+# the rewrites listed with a reason in scripts/law_tie_equivalents.tsv, which must pass.
+# scripts/law_tie_mutants.py fails on an unlisted survivor, on a listed mutant that is
+# killed or gone, on a mutant that does not compile, and when no mutant ran.
+#
+# 20 rebuilds of two test binaries: run when the lanes or the helpers change, and weekly at a
+# quiet hour; not on every push.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/tensor.rs'
+      - 'src/law_math.rs'
+      - 'tests/law_ties.rs'
+      - 'scripts/law_tie_mutants.py'
+      - 'scripts/law_tie_equivalents.tsv'
+      - '.github/workflows/law-tie-mutants.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/tensor.rs'
+      - 'src/law_math.rs'
+      - 'tests/law_ties.rs'
+      - 'scripts/law_tie_mutants.py'
+      - 'scripts/law_tie_equivalents.tsv'
+      - '.github/workflows/law-tie-mutants.yml'
+  schedule:
+    # Sunday 19:40 UTC (04:40 JST Monday)
+    - cron: '40 19 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  avx2-mutants:
+    name: AVX2 sites rewritten as comparisons (x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      max-parallel: 1
+      matrix:
+        target: [x86_64-unknown-linux-gnu]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: law-tie-mutants
+      # the mutants are only meaningful where the AVX2 branch runs
+      - name: The runner has AVX2
+        run: |
+          grep -qw avx2 /proc/cpuinfo || { echo "no AVX2 on this runner, so the AVX2 branch would not run"; exit 1; }
+      - name: Harness tests
+        run: python3 scripts/test_law_tie_mutants.py
+      - name: Unmutated tree passes the tie tests and goldens with the AVX2 branch
+        run: cargo test --features simd --test law_ties --test determinism_golden
+      - name: Mutants (count killed, fail on an unlisted survivor or on none run)
+        run: python3 scripts/law_tie_mutants.py --avx2-only -- --features simd --test law_ties --test determinism_golden

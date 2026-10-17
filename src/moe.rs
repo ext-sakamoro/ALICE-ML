@@ -186,12 +186,7 @@ fn softmax_inplace(x: &mut [f32]) {
         return;
     }
     // max探索
-    let mut max_val = x[0];
-    for &v in &x[1..] {
-        if v > max_val {
-            max_val = v;
-        }
-    }
+    let max_val = crate::law_math::max_of(x);
     // exp + sum
     let mut sum = 0.0_f32;
     for v in x.iter_mut() {
@@ -210,7 +205,7 @@ fn softmax_inplace(x: &mut [f32]) {
 /// 高速exp近似（range reduction + 3次多項式）
 #[inline(always)]
 fn fast_exp(x: f32) -> f32 {
-    let clamped = x.clamp(-87.0_f32, 88.0_f32);
+    let clamped = crate::law_math::clamp(x, -87.0_f32, 88.0_f32);
     let val = clamped * core::f32::consts::LOG2_E;
     let ipart = floor_f32(val);
     let fpart = val - ipart;
@@ -238,7 +233,8 @@ fn floor_f32(x: f32) -> f32 {
 fn top_k_select(scores: &[f32], k: usize) -> Vec<ExpertChoice> {
     let mut indexed: Vec<(usize, f32)> = scores.iter().copied().enumerate().collect();
     // 上位K個を選ぶために降順ソート
-    indexed.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(core::cmp::Ordering::Equal));
+    // stable: equal scores keep the expert order; NaN below every score, -0 below +0
+    indexed.sort_by(|a, b| crate::law_math::order(b.1, a.1));
 
     indexed
         .iter()

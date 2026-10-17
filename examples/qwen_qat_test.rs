@@ -15,7 +15,7 @@
 
 use alice_ml::llama3_ternary::{Llama3TernaryConfig, Llama3TernaryModel};
 use alice_ml::model_io::ModelArchive;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::time::Instant;
@@ -62,7 +62,9 @@ fn main() {
     // Load ATML
     println!("Loading ATML: {atml_path}");
     let atml_raw = fs::read(&atml_path).expect("Failed to read ATML file");
-    let archive = ModelArchive::deserialize(&atml_raw).expect("Failed to parse ATML");
+    let archive = ModelArchive::read(&atml_raw, alice_ml::model_io::LegacyPolicy::Accept)
+        .expect("Failed to parse ATML")
+        .0;
     println!(
         "  {} layers ({:.1} MB)",
         archive.layer_count(),
@@ -204,8 +206,8 @@ fn main() {
 // ---------------------------------------------------------------------------
 // FP32 bin parser
 // ---------------------------------------------------------------------------
-fn parse_fp32_bin(data: &[u8]) -> HashMap<String, Vec<f32>> {
-    let mut map = HashMap::new();
+fn parse_fp32_bin(data: &[u8]) -> BTreeMap<String, Vec<f32>> {
+    let mut map = BTreeMap::new();
     let mut offset = 0;
 
     if data.len() < 4 {
@@ -241,7 +243,7 @@ fn parse_fp32_bin(data: &[u8]) -> HashMap<String, Vec<f32>> {
 // ---------------------------------------------------------------------------
 fn build_model_from_atml(
     archive: &ModelArchive,
-    fp32: &HashMap<String, Vec<f32>>,
+    fp32: &BTreeMap<String, Vec<f32>>,
     config: &Llama3TernaryConfig,
 ) -> Llama3TernaryModel {
     // This creates the model by directly loading pre-quantized ternary weights.

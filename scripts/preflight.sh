@@ -60,6 +60,10 @@ step "ci.yml / clippy: Clippy (full native feature set, all targets, pedantic + 
 relint
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo clippy --features "$NATIVE_FEATURES" --all-targets -- -W clippy::pedantic -W clippy::nursery -D warnings )
 
+step "ci.yml / clippy: Clippy (pyo3, lib)"
+relint
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings"; cargo clippy --lib --features pyo3 -- -D warnings )
+
 step "ci.yml / clippy: Clippy canary data (generator tests)"
 python3 scripts/test_gen_clippy_canary_calls.py
 
@@ -103,6 +107,12 @@ python3 scripts/readme_sync.py --check
 step "ci.yml / law-g1-banned-list: check_g1_banned_list (oracle + check)"
 python3 scripts/test_check_g1_banned_list.py
 python3 scripts/check_g1_banned_list.py
+
+step "ci.yml / test: Thread-count independence of the parallel batch"
+scripts/run_tests.sh parallel_order=2 -- cargo test --features parallel --test parallel_order
+
+step "ci.yml / law-g1-banned-list: law_tie_mutants.py (tests)"
+python3 scripts/test_law_tie_mutants.py
 
 step "ci.yml / msrv: check_msrv (oracle + check)"
 python3 scripts/test_check_msrv.py

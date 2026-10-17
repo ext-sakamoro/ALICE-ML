@@ -32,9 +32,27 @@ jobs:
       - name: Test (default)
         run: cargo test --lib --tests
       - name: Test (simd)
+        # the AVX2 max / min lanes of src/law_math.rs are checked against the scalar
+        # helpers on this x86_64 runner (the test fails if AVX2 is missing)
+        env:
+          ALICE_ML_REQUIRE_AVX2: "1"
         run: cargo test --lib --tests --features simd
       - name: Test (full native feature set)
+        # the AVX2 max / min lanes of src/law_math.rs are checked against the scalar
+        # helpers on this x86_64 runner (the test fails if AVX2 is missing)
+        env:
+          ALICE_ML_REQUIRE_AVX2: "1"
         run: cargo test --lib --tests --features "$NATIVE_FEATURES"
+      # the same lane test alone, with its output, so the log shows the number of
+      # pairs it compared (a pass with no line means it did not run)
+      - name: AVX2 lane test of the Law max / min (count in the log)
+        env:
+          ALICE_ML_REQUIRE_AVX2: "1"
+        run: cargo test --lib --features simd law_math::tests::avx2_lanes_equal_the_scalar_helpers_over_every_pair -- --exact --nocapture
+      # ALICE-Law G13: the rayon batch at 1, 2 and 8 threads gives the serial bits; the
+      # test file is empty without `parallel`, so its count is required
+      - name: Thread-count independence of the parallel batch
+        run: scripts/run_tests.sh parallel_order=2 -- cargo test --features parallel --test parallel_order
 
   float-environment:
     # ALICE-Law G14 on each OS: round-to-nearest-even and no flush-to-zero at run
@@ -126,6 +144,10 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Clippy (full native feature set, all targets, pedantic + nursery)
         run: cargo clippy --features "$NATIVE_FEATURES" --all-targets -- -W clippy::pedantic -W clippy::nursery -D warnings
+      # the full native feature set leaves pyo3 out, so src/python.rs is linted only here:
+      # a banned call there (clippy.toml) is red in this step and in no other
+      - name: Clippy (pyo3, lib)
+        run: cargo clippy --lib --features pyo3 -- -D warnings
       # the lists in clippy.toml only gate anything if clippy flags a call to
       # them: a throwaway crate with the same clippy.toml plants one banned call
       # per row of scripts/clippy_canary_calls.tsv (0 rows fail). The rows are
@@ -245,5 +267,8 @@ jobs:
           python-version: "3.x"
       - name: check_g1_banned_list oracle (検査器自身の試験)
         run: python3 scripts/test_check_g1_banned_list.py
+      # the comparison-rewrite harness of the G2 tie rule (law-tie-mutants.yml runs it)
+      - name: law_tie_mutants.py (tests)
+        run: python3 scripts/test_law_tie_mutants.py
       - name: check_g1_banned_list (clippy.toml が .github/law-g1-pin の G1 一覧を全部 ban しているか)
         run: python3 scripts/check_g1_banned_list.py

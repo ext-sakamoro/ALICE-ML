@@ -92,9 +92,6 @@ tensor.rs / training.rs)、理由はもっと単純で: `a * b + c` と `a.mul_a
 (layer/RMS norm が呼んでいたのも `sqrt` だけになり、`mul_add` が消えたことで platform
 依存の演算を一切呼ばなくなった)
 
-<!-- law-integration:begin -->
-<!-- law-integration:end -->
-
 ## 含まれるもの
 
 | 領域 | Module |
@@ -166,7 +163,51 @@ cargo bench --features simd  # criterion benchmark、benches/matmul.rs 参照
 - [ALICE-DB](https://github.com/ext-sakamoro/ALICE-DB) — 学習 metric の persistence
   (feature `db`)
 
-## License
+<!-- law-integration:begin law=e75d038a6aaa51edc64aa014a24f0b2617e34acd -->
+## ALICE-Law との統合
+
+ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `e75d038a6aaa` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
+
+| | |
+|---|---|
+| release train | alice-ml 0.2.0 (published)、Law への依存: なし |
+| 算術 | train の alice-det-math 0.5.1、算術の識別子 `85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315` この crate の要求は `alice-det-math = "0.5.1"` |
+| end to end 検査 | end to end 検査の対象外 |
+
+### 適合 (G1-G14)
+
+| gate | 状態 | 注記 |
+|---|---|---|
+| G1 no-libm-direct | 適合 | layers that read: clippy.toml bans all 25 of G1's banned methods for f32 and f64 (plus powi and mul_add for both widths, and the reasons are in the file; … |
+| G2 ieee-max-min | 適合 | every float maximum, minimum, clamp, argmax and selection order of the library goes through src/law_math.rs. Residual: the AVX2 max / min intrinsics are not … |
+| G3 no-outer-fneg-of-fma | 未確認 | no syntax-tree checker for an outer negation of an fma exists (scripts/ holds check_g1_banned_list.py, check_msrv.py and readme_sync.py only), which the gate … |
+| G4 debug-release-arch-goldens | 未達 | no signed-zero or exact-cancellation golden exists: tests/ holds tests/analytic_oracle.rs (closed-form comparisons), tests/calibration_oracle.rs (tolerance … |
+| G5 release-profile-test-leg | 未達 | no CI job runs the test suite under the release profile, on aarch64 or anywhere: the test job (ci.yml:26-37) runs `cargo test --lib --tests` three times in … |
+| G6 semantics-id | 適合 | hex with alice-det-math 0.5.1: a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b. The identifier attests the pinned kernels (relu, max_min, … |
+| G7 handshake-carries-id | 適合 | the list of type-erasing boundaries that receive another Law-bearing crate's value is empty: the C ABI and the Python exports take the caller's numbers, the … |
+| G8 persisted-semantics-id | 適合 | the identifier recorded is ML_SEMANTICS_ID (G6): it pins the quantiser whose scale and packed values the file stores, and the det-math generation. db_bridge … |
+| G9 persisted-meaning-change-is-major | 未確認 | the identifier exists from 0.4.0 (ML_SEMANTICS_ID, G6) and ATML records it (G8); 0.4.0 changes the persisted meaning (ATML version 2) and is a 0.x major step, … |
+| G10 no-run-varying-artifacts | 適合 | the ban covers what src/ can reach: the clock and RandomState through std, and nothing else, because no direct dependency offers an RNG or a UUID (rand is a … |
+| G11 gate-self-tests | 未達 | unmet: clause (c). scripts/clippy_canary.py, scripts/test_clippy_canary.py, scripts/gen_clippy_canary_calls.py and scripts/test_gen_clippy_canary_calls.py are … |
+| G12 public-repo-text-rules | 適合 | the workflow fetches ALICE-Law's scripts/public_text_check.py at the revision in .github/public-text-pin (779fa443f95bc0caca5ca2d5bdb9156051fd6143) and refuses … |
+| G13 no-unspecified-order | 適合 | the batch computes each output row in one task and combines no float across tasks, so its bits do not depend on the thread count; the test is what keeps it so. … |
+| G14 float-environment-invariants | 適合 | the static scan covers the files of this repository (.cargo/mutants.toml included) and the dynamic check covers the builds CI runs on ubuntu and macOS (the … |
+
+### feature と保証の範囲
+
+| feature | 保証 | 注記 |
+|---|---|---|
+| `db` | 範囲外 | ALICE-DB metrics sink; the rows are alice-db's own format with its own identifier, read through alice-db's Rust API (G7, in memory); this crate adds no … |
+| `ffi` | 範囲外 | C ABI entry points (67 extern "C" fn); the max / min / relu / softmax kernels are pinned by the ffi golden and tests/law_ties.rs, the rest by the G1 lint only; … |
+| `neon` | 範囲外 | NEON kernel on aarch64; no golden compares its bits with the scalar path across architectures (G4) |
+| `parallel` | 範囲外 | rayon over output rows (ops::ternary_matmul_batch); the same bits at 1, 2 and 8 threads (tests/parallel_order.rs, G13); no G4 golden |
+| `pyo3` | 範囲外 | linted by the clippy job's `Clippy (pyo3, lib)` step (G1); no test builds it (a Python interpreter is needed), so its maximum / minimum sites are covered only … |
+| `safetensors` | 範囲外 | safetensors parser and Llama-3 ternary path; no Law gate beyond the G1 lint, no golden (G4) |
+| `simd` | 範囲外 | AVX2 kernel on x86_64; the max / min / relu lanes are tie-tested and mutant-checked on CI's x86_64 runner (law-tie-mutants.yml), but no G4 golden spans the … |
+| `std` | 範囲外 | default feature; G6 and G8 are met (0.4.0) but G4 and G5 are not (no signed-zero or cancellation golden on every architecture, no release-profile test leg), so … |
+<!-- law-integration:end -->
+
+## ライセンス
 
 `AGPL-3.0-or-later OR LicenseRef-Commercial` [`LICENSE-AGPL`](LICENSE-AGPL) と
 [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md) を参照
