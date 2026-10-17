@@ -16,7 +16,7 @@
 use std::hint::black_box;
 
 use alice_ml::calibration::{negative_log_likelihood, TemperatureScaling};
-use alice_ml::law_math::{argmax, clamp, max, max64, max_of, min, min64, min_of, relu};
+use alice_ml::law_math::{argmax, clamp, clamp64, max, max64, max_of, min, min64, min_of, relu};
 use alice_ml::tensor::{tensor_max, tensor_min, tensor_softmax, tensor_softmax_fast, Tensor};
 use alice_ml::training::cross_entropy_loss;
 
@@ -64,6 +64,47 @@ fn cross_entropy_uniform(n: usize) -> u32 {
         .to_bits()
 }
 
+/// The clamp sites of a NaN input of either sign, quiet or signalling with a payload: the
+/// canonical NaN, in the order of the pinned table
+fn nan_cases() -> Vec<(&'static str, u64)> {
+    let f = |x: f32| u64::from(x.to_bits());
+    vec![
+        (
+            "clamp(+NaN, -1, 1)",
+            f(clamp(
+                black_box(f32::from_bits(0x7fc0_0000)),
+                black_box(-1.0),
+                black_box(1.0),
+            )),
+        ),
+        (
+            "clamp(-NaN, -1, 1)",
+            f(clamp(
+                black_box(f32::from_bits(0xffc0_0000)),
+                black_box(-1.0),
+                black_box(1.0),
+            )),
+        ),
+        (
+            "clamp(-sNaN payload, -1, 1)",
+            f(clamp(
+                black_box(f32::from_bits(0xff80_1234)),
+                black_box(-1.0),
+                black_box(1.0),
+            )),
+        ),
+        (
+            "clamp64(-NaN payload, -1, 1)",
+            clamp64(
+                black_box(f64::from_bits(0xfff8_0000_0000_5678)),
+                black_box(-1.0),
+                black_box(1.0),
+            )
+            .to_bits(),
+        ),
+    ]
+}
+
 /// `(case, measured bits as u64)`: f32 results widened, f64 results as they are, index results as the index
 fn measured() -> Vec<(&'static str, u64)> {
     // every input goes through black_box: the release legs must run the emitted comparisons
@@ -107,6 +148,9 @@ fn measured() -> Vec<(&'static str, u64)> {
             f(clamp(nz, black_box(0.0), black_box(1.0))),
         ),
         ("clamp(+0, -1, -0)", f(clamp(pz, black_box(-1.0), nz))),
+    ];
+    v.extend(nan_cases());
+    v.extend([
         ("max_of([-0, +0])", f(max_of(&[nz, pz]))),
         ("max_of([+0, -0])", f(max_of(&[pz, nz]))),
         ("min_of([-0, +0])", f(min_of(&[nz, pz]))),
@@ -134,7 +178,7 @@ fn measured() -> Vec<(&'static str, u64)> {
             "cross_entropy(equal logits, n = 8)",
             u64::from(cross_entropy_uniform(8)),
         ),
-    ];
+    ]);
     let lists: [(&'static str, Vec<u32>); 9] = [
         ("softmax([5; 4])", softmax(&[5.0; 4], false)),
         ("softmax_fast([5; 4])", softmax(&[5.0; 4], true)),
@@ -177,6 +221,10 @@ const EXPECTED: &[(&str, u64)] = &[
     ("clamp(+0, -1, 1)", 0x0000_0000_0000_0000),
     ("clamp(-0, +0, 1)", 0x0000_0000_0000_0000),
     ("clamp(+0, -1, -0)", 0x0000_0000_8000_0000),
+    ("clamp(+NaN, -1, 1)", 0x0000_0000_7fc0_0000),
+    ("clamp(-NaN, -1, 1)", 0x0000_0000_7fc0_0000),
+    ("clamp(-sNaN payload, -1, 1)", 0x0000_0000_7fc0_0000),
+    ("clamp64(-NaN payload, -1, 1)", 0x7ff8_0000_0000_0000),
     ("max_of([-0, +0])", 0x0000_0000_0000_0000),
     ("max_of([+0, -0])", 0x0000_0000_0000_0000),
     ("min_of([-0, +0])", 0x0000_0000_8000_0000),
@@ -246,6 +294,8 @@ fn the_pinned_values_are_the_law() {
         ("relu(-0)", 0),
         ("clamp(-0, -1, 1)", 0x8000_0000),
         ("clamp(-0, +0, 1)", 0),
+        ("clamp(-NaN, -1, 1)", 0x7fc0_0000),
+        ("clamp64(-NaN payload, -1, 1)", 0x7ff8_0000_0000_0000),
         ("max_of([+0, -0])", 0),
         ("min_of([-0, +0])", 0x8000_0000),
         ("argmax([-0, +0])", 1),

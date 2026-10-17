@@ -30,6 +30,13 @@
 
 pub use alice_det_math::{max, max64, min, min64};
 
+/// The canonical NaN a Law site returns for a NaN input (positive, quiet, no payload:
+/// `0x7fc0_0000`), written out because `f32::NAN`'s bit pattern is not guaranteed by `std`
+const CANONICAL_NAN: f32 = f32::from_bits(0x7fc0_0000);
+
+/// The `f64` canonical NaN (`0x7ff8_0000_0000_0000`), for the same reason
+const CANONICAL_NAN64: f64 = f64::from_bits(0x7ff8_0000_0000_0000);
+
 /// `x` limited to `[lo, hi]`: NaN for a NaN `x` (the canonical NaN), otherwise
 /// `min(max(x, lo), hi)` with the zero-sign rule of [`max`] / [`min`].
 ///
@@ -39,7 +46,7 @@ pub use alice_det_math::{max, max64, min, min64};
 #[must_use]
 pub fn clamp(x: f32, lo: f32, hi: f32) -> f32 {
     if x.is_nan() {
-        f32::NAN
+        CANONICAL_NAN
     } else {
         min(max(x, lo), hi)
     }
@@ -50,7 +57,7 @@ pub fn clamp(x: f32, lo: f32, hi: f32) -> f32 {
 #[must_use]
 pub fn clamp64(x: f64, lo: f64, hi: f64) -> f64 {
     if x.is_nan() {
-        f64::NAN
+        CANONICAL_NAN64
     } else {
         min64(max64(x, lo), hi)
     }
