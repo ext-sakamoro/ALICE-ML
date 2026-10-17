@@ -98,7 +98,7 @@ reference_repo = "ALICE-DB"
 
 [G9]
 status = "unverified"
-note = "depends on G6 and G8: the crate has no identifier whose history could be audited. CHANGELOG.md records no identifier move; the only format version is FORMAT_VERSION = 1 of the ATML archive (src/model_io.rs:15) and it has not moved."
+note = "the identifier exists from 0.4.0 (ML_SEMANTICS_ID, G6) and ATML records it (G8); 0.4.0 changes the persisted meaning (ATML version 2) and is a 0.x major step, but the audit of the identifier's history that G9 asks for is not done here"
 
 [G10]
 status = "pass"
@@ -159,15 +159,15 @@ reference_repo = "ALICE-DB"
 
 [features.std]
 guarantee = "outside"
-note = "default feature; the crate declares no guarantee for it: G6, G8 and the goldens of G4 are absent (see those gates), so no inside claim is made"
+note = "default feature; G6 and G8 are met (0.4.0) but G4 and G5 are not (no signed-zero or cancellation golden on every architecture, no release-profile test leg), so no inside claim is made"
 
 [features.ffi]
 guarantee = "outside"
-note = "C ABI entry points (67 extern \"C\" fn); not covered by a Law gate beyond the G1 lint, and not exercised by an end to end check or an external-reference oracle"
+note = "C ABI entry points (67 extern \"C\" fn); the max / min / relu / softmax kernels are pinned by the ffi golden and tests/law_ties.rs, the rest by the G1 lint only; G4 / G5 unmet"
 
 [features.simd]
 guarantee = "outside"
-note = "AVX2 kernel on x86_64; no signed-zero or cancellation golden holds on every architecture (G4), the x86_64 code is linted only by the CI ubuntu-latest clippy jobs"
+note = "AVX2 kernel on x86_64; the max / min / relu lanes are tie-tested and mutant-checked on CI's x86_64 runner (law-tie-mutants.yml), but no G4 golden spans the architectures"
 
 [features.neon]
 guarantee = "outside"
@@ -175,15 +175,15 @@ note = "NEON kernel on aarch64; no golden compares its bits with the scalar path
 
 [features.parallel]
 guarantee = "outside"
-note = "rayon over output rows (src/ops.rs:415); no test at two thread counts (G13), no G4 golden"
+note = "rayon over output rows (ops::ternary_matmul_batch); the same bits at 1, 2 and 8 threads (tests/parallel_order.rs, G13); no G4 golden"
 
 [features.pyo3]
 guarantee = "outside"
-note = "no CI job lints or builds it under the Law gates (G1 hole: ci.yml:23 NATIVE_FEATURES excludes it)"
+note = "linted by the clippy job's `Clippy (pyo3, lib)` step (G1); no test builds it (a Python interpreter is needed), so its maximum / minimum sites are covered only through the law_math helpers they call"
 
 [features.db]
 guarantee = "outside"
-note = "ALICE-DB metrics sink; the persisted form is the store's, the crate adds no identifier (G8)"
+note = "ALICE-DB metrics sink; the rows are alice-db's own format with its own identifier, read through alice-db's Rust API (G7, in memory); this crate adds no identifier to them"
 
 [features.safetensors]
 guarantee = "outside"
