@@ -72,4 +72,6 @@ disallowed-methods	std::time::SystemTime::now	let _ = std::time::SystemTime::now
 disallowed-methods	std::time::Instant::elapsed	let _ = std::time::Instant::elapsed;
 disallowed-methods	std::time::SystemTime::elapsed	let _ = std::time::SystemTime::elapsed;
 disallowed-methods	std::collections::hash_map::RandomState::new	let _ = std::collections::hash_map::RandomState::new;
+disallowed-types	std::collections::HashMap	#[allow(unused_imports)] use std::collections::HashMap as CanaryType;
+disallowed-types	std::collections::HashSet	#[allow(unused_imports)] use std::collections::HashSet as CanaryType;
 disallowed-types	std::collections::hash_map::RandomState	#[allow(unused_imports)] use std::collections::hash_map::RandomState as CanaryType;

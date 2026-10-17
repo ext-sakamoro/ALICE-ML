@@ -108,6 +108,9 @@ step "ci.yml / law-g1-banned-list: check_g1_banned_list (oracle + check)"
 python3 scripts/test_check_g1_banned_list.py
 python3 scripts/check_g1_banned_list.py
 
+step "ci.yml / test: Thread-count independence of the parallel batch"
+scripts/run_tests.sh parallel_order=2 -- cargo test --features parallel --test parallel_order
+
 step "ci.yml / law-g1-banned-list: law_tie_mutants.py (tests)"
 python3 scripts/test_law_tie_mutants.py
 
