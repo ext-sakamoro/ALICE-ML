@@ -27,21 +27,15 @@ const BOUNDARIES: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "byte reader of this crate's own format",
-        "pub fn deserialize(data: &[u8])",
-        1,
-        "src/model_io.rs ATML: this crate's own durable format, compared under G8 (ModelArchive::read)",
-    ),
-    (
-        "byte reader of this crate's own format (checked)",
         "pub fn read(data: &[u8], legacy: LegacyPolicy)",
         1,
         "src/model_io.rs ATML version 2: records and compares ML_SEMANTICS_ID (G8)",
     ),
     (
         "byte reader through ATML",
-        "pub fn from_bytes(data: &[u8], config: StreamerConfig)",
+        "pub fn from_bytes(",
         1,
-        "src/streaming.rs: reads through ModelArchive::deserialize, this crate's own format",
+        "src/streaming.rs: reads through ModelArchive::read and returns its provenance or its error (G8)",
     ),
     (
         "byte reader of an external format",

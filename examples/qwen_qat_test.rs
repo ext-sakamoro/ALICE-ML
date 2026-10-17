@@ -62,7 +62,9 @@ fn main() {
     // Load ATML
     println!("Loading ATML: {atml_path}");
     let atml_raw = fs::read(&atml_path).expect("Failed to read ATML file");
-    let archive = ModelArchive::deserialize(&atml_raw).expect("Failed to parse ATML");
+    let archive = ModelArchive::read(&atml_raw, alice_ml::model_io::LegacyPolicy::Accept)
+        .expect("Failed to parse ATML")
+        .0;
     println!(
         "  {} layers ({:.1} MB)",
         archive.layer_count(),

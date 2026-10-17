@@ -213,15 +213,6 @@ impl ModelArchive {
         buf
     }
 
-    /// バイト列からデシリアライズ ([`ModelArchive::read`] with [`LegacyPolicy::Accept`],
-    /// the provenance dropped).
-    ///
-    /// `None` for every error of [`ModelArchive::read`], a semantics mismatch included.
-    #[must_use]
-    pub fn deserialize(data: &[u8]) -> Option<Self> {
-        Self::read(data, LegacyPolicy::Accept).ok().map(|(a, _)| a)
-    }
-
     /// Reads version 2 (identifier compared, see the [module documentation](self)) or
     /// version 1 (under `legacy`).
     ///
@@ -383,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn serialize_deserialize_roundtrip() {
+    fn serialize_read_roundtrip() {
         let mut a = ModelArchive::new();
         let w1 = TernaryWeight::from_ternary(&[1, -1, 0, 1], 2, 2);
         let w2 = TernaryWeight::from_ternary(&[1, 0, -1, 0, 1, -1, 0, 1, 0], 3, 3);
@@ -391,7 +382,7 @@ mod tests {
         a.add_layer("fc2", &w2);
 
         let bytes = a.serialize();
-        let restored = ModelArchive::deserialize(&bytes).unwrap();
+        let restored = ModelArchive::read(&bytes, LegacyPolicy::Refuse).unwrap().0;
         assert_eq!(restored.layer_count(), 2);
 
         let l0 = restored.get_layer(0).unwrap();
@@ -410,7 +401,7 @@ mod tests {
         a.add_layer("test", &w);
 
         let bytes = a.serialize();
-        let restored = ModelArchive::deserialize(&bytes).unwrap();
+        let restored = ModelArchive::read(&bytes, LegacyPolicy::Refuse).unwrap().0;
         let l = restored.get_layer(0).unwrap();
         let w2 = ModelArchive::restore_weight(l);
         assert_eq!(w2.out_features(), 2);
@@ -418,23 +409,23 @@ mod tests {
     }
 
     #[test]
-    fn deserialize_invalid_magic() {
+    fn read_invalid_magic() {
         let data = b"XXXX\x01\x00\x00\x00\x00\x00\x00\x00";
-        assert!(ModelArchive::deserialize(data).is_none());
+        assert!(ModelArchive::read(data, LegacyPolicy::Accept).is_err());
     }
 
     #[test]
-    fn deserialize_too_short() {
-        assert!(ModelArchive::deserialize(b"ATM").is_none());
+    fn read_too_short() {
+        assert!(ModelArchive::read(b"ATM", LegacyPolicy::Accept).is_err());
     }
 
     #[test]
-    fn deserialize_wrong_version() {
+    fn read_wrong_version() {
         let mut data = Vec::new();
         data.extend_from_slice(&MAGIC);
         data.extend_from_slice(&99_u32.to_le_bytes());
         data.extend_from_slice(&0_u32.to_le_bytes());
-        assert!(ModelArchive::deserialize(&data).is_none());
+        assert!(ModelArchive::read(&data, LegacyPolicy::Accept).is_err());
         assert_eq!(
             ModelArchive::read(&data, LegacyPolicy::Accept).err(),
             Some(ArchiveError::UnsupportedVersion(99))
@@ -459,21 +450,21 @@ mod tests {
     }
 
     #[test]
-    fn deserialize_truncated_layer() {
+    fn read_truncated_layer() {
         let mut a = ModelArchive::new();
         let w = TernaryWeight::from_ternary(&[1, -1, 0, 1], 2, 2);
         a.add_layer("test", &w);
         let bytes = a.serialize();
         // 途中で切断
         let truncated = &bytes[..bytes.len() - 1];
-        assert!(ModelArchive::deserialize(truncated).is_none());
+        assert!(ModelArchive::read(truncated, LegacyPolicy::Accept).is_err());
     }
 
     #[test]
     fn serialize_empty_archive() {
         let a = ModelArchive::new();
         let bytes = a.serialize();
-        let restored = ModelArchive::deserialize(&bytes).unwrap();
+        let restored = ModelArchive::read(&bytes, LegacyPolicy::Refuse).unwrap().0;
         assert_eq!(restored.layer_count(), 0);
     }
 
@@ -494,7 +485,7 @@ mod tests {
         let mut a = ModelArchive::new();
         a.add_layer("fc", &w);
         let bytes = a.serialize();
-        let restored = ModelArchive::deserialize(&bytes).unwrap();
+        let restored = ModelArchive::read(&bytes, LegacyPolicy::Refuse).unwrap().0;
         let w2 = ModelArchive::restore_weight(restored.get_layer(0).unwrap());
 
         let mut out2 = [0.0_f32; 2];
