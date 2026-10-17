@@ -4,6 +4,10 @@ All notable changes to ALICE-ML will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- CI (ALICE-Law G3): fma の結果全体を negate する形の検査を追加 (ALICE-LOL と同一の構文木の前段検査 `tools/no-outer-fneg-of-fma` を `--locked` で、最適化後の LLVM IR の検査 `scripts/fneg_fma_ir_check.py` と試験、47 個の probe) library の source に fma の呼び出しは無く、test に 2 件 (どちらも negate しない)、`assert!` の中の 1 件は理由付きで allowlist に置いた IR の検査は新しい `.github/workflows/g3-ir.yml` が x86_64 (ubuntu-latest) と aarch64 (ubuntu-24.04-arm) の実機 runner で実行する (pyo3 は cross build できない) `.gitignore` で検査器の `Cargo.lock` を追跡対象にした `alice-law-conformance.toml` の G3 を unverified から pass にした
+
 ## [0.4.0] - 2026-10-17
 
 ALICE-Law の wave: G1 (pyo3 の lint)、G2 (最大・最小・clamp と tie 規則)、G6 (`ML_SEMANTICS_ID`)、G7 (型が消える境界)、G8 (ATML version 2)、G13 (順序の決まらない集合と並列の禁止) 永続化の形式が変わる (ATML version 2、G9 の規則で major) ので 0.3 から上げる

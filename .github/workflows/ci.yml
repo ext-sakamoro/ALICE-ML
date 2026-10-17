@@ -53,6 +53,15 @@ jobs:
       # test file is empty without `parallel`, so its count is required
       - name: Thread-count independence of the parallel batch
         run: scripts/run_tests.sh parallel_order=2 -- cargo test --features parallel --test parallel_order
+      # ALICE-Law G3, syntax-tree pre-check (tools/no-outer-fneg-of-fma, byte-identical to
+      # ALICE-LOL's, built with --locked): its own tests, then the check over src/ tests/
+      # examples/ benches/ with the exact fma-call counts of
+      # scripts/no-outer-fneg-of-fma-allowlist.toml (2, both in tests/); the IR half is g3-ir.yml
+      - name: No negated fma result (syntax tree, tests then check)
+        shell: bash
+        run: |
+          cargo test --quiet --locked --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml
+          cargo run --quiet --locked --release --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml -- --root .
 
   float-environment:
     # ALICE-Law G14 on each OS: round-to-nearest-even and no flush-to-zero at run
