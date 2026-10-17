@@ -2,17 +2,123 @@
 //!
 //! `TernaryWeight` をバイト列に変換してファイル保存/読込するための
 //! 軽量バイナリフォーマット。外部依存ゼロ。
+//!
+//! # The semantics identifier (ALICE-Law G8)
+//!
+//! Version 2 of the format records [`ML_SEMANTICS_ID`] of the build that wrote the
+//! file, right after the version. A reader compares the recorded identifier, not its
+//! own build's: [`ModelArchive::read`] accepts its own identifier
+//! ([`Provenance::Verified`]) or one of [`PREVIOUS_ML_SEMANTICS_IDS`]
+//! ([`Provenance::VerifiedPrevious`]) and returns [`ArchiveError::SemanticsMismatch`]
+//! naming both identifiers for any other. A version 1 file has no identifier: it is
+//! read as [`Provenance::V1Legacy`], or refused with [`LegacyPolicy::Refuse`].
+//! [`ModelArchive::serialize`] is the one writer (`LlamaTernary::save_atml` calls it).
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use core::fmt;
 
 use crate::ops::TernaryWeight;
+use crate::semantics::{ML_SEMANTICS_ID, PREVIOUS_ML_SEMANTICS_IDS};
 
 /// モデルファイルのマジックナンバー。
 const MAGIC: [u8; 4] = *b"ATML";
 
-/// フォーマットバージョン。
-const FORMAT_VERSION: u32 = 1;
+/// The format version this crate writes: 2 (version 1 had no semantics identifier).
+pub const FORMAT_VERSION: u32 = 2;
+
+/// The version before the semantics identifier, still readable as [`Provenance::V1Legacy`].
+const FORMAT_VERSION_V1: u32 = 1;
+
+/// How a file was accepted by [`ModelArchive::read`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Provenance {
+    /// Version 2, written under this build's [`ML_SEMANTICS_ID`].
+    Verified,
+    /// Version 2, written under an earlier identifier listed in
+    /// [`PREVIOUS_ML_SEMANTICS_IDS`] (the same bits on every pinned kernel).
+    VerifiedPrevious([u8; 32]),
+    /// Version 1: no identifier was recorded, so nothing was verified.
+    V1Legacy,
+}
+
+/// Whether [`ModelArchive::read`] accepts a version 1 file (no identifier).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LegacyPolicy {
+    /// Read it as [`Provenance::V1Legacy`].
+    Accept,
+    /// Refuse it with [`ArchiveError::LegacyRefused`].
+    Refuse,
+}
+
+/// Why [`ModelArchive::read`] rejected the bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ArchiveError {
+    /// Shorter than a header.
+    TooShort,
+    /// Not the `ATML` magic.
+    BadMagic,
+    /// A version this crate does not read.
+    UnsupportedVersion(u32),
+    /// A version 1 file under [`LegacyPolicy::Refuse`].
+    LegacyRefused,
+    /// The recorded identifier is neither this build's nor a listed earlier one.
+    SemanticsMismatch {
+        /// The identifier the file records.
+        stored: [u8; 32],
+        /// This build's [`ML_SEMANTICS_ID`].
+        expected: [u8; 32],
+    },
+    /// A layer runs past the end of the bytes.
+    Truncated,
+}
+
+impl fmt::Display for ArchiveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TooShort => f.write_str("ATML: shorter than a header"),
+            Self::BadMagic => f.write_str("ATML: bad magic"),
+            Self::UnsupportedVersion(v) => write!(f, "ATML: unsupported format version {v}"),
+            Self::LegacyRefused => {
+                f.write_str("ATML: version 1 file (no semantics identifier) refused")
+            }
+            Self::SemanticsMismatch { stored, expected } => {
+                f.write_str("ATML: semantics identifier ")?;
+                hex(f, stored)?;
+                f.write_str(" is not this build's ")?;
+                hex(f, expected)?;
+                f.write_str(" nor a verified earlier one")
+            }
+            Self::Truncated => f.write_str("ATML: truncated layer"),
+        }
+    }
+}
+
+fn hex(f: &mut fmt::Formatter<'_>, b: &[u8; 32]) -> fmt::Result {
+    b.iter().try_for_each(|x| write!(f, "{x:02x}"))
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for ArchiveError {}
+
+/// The provenance of a recorded identifier against `current` and the `previous` list.
+fn check_stored(
+    stored: [u8; 32],
+    current: [u8; 32],
+    previous: &[[u8; 32]],
+) -> Result<Provenance, ArchiveError> {
+    if stored == current {
+        Ok(Provenance::Verified)
+    } else if previous.contains(&stored) {
+        Ok(Provenance::VerifiedPrevious(stored))
+    } else {
+        Err(ArchiveError::SemanticsMismatch {
+            stored,
+            expected: current,
+        })
+    }
+}
 
 /// シリアライズされたモデルレイヤー。
 #[derive(Debug, Clone)]
@@ -75,9 +181,10 @@ impl ModelArchive {
 
     /// バイト列にシリアライズ。
     ///
-    /// フォーマット:
+    /// フォーマット (version 2):
     /// - `[4]` マジック "ATML"
-    /// - `[4]` バージョン (u32 LE)
+    /// - `[4]` バージョン (u32 LE、2)
+    /// - `[32]` 書いた build の [`ML_SEMANTICS_ID`]
     /// - `[4]` レイヤー数 (u32 LE)
     /// - 各レイヤー:
     ///   - `[8]` 名前ハッシュ (u64 LE)
@@ -91,6 +198,7 @@ impl ModelArchive {
         let mut buf = Vec::new();
         buf.extend_from_slice(&MAGIC);
         buf.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        buf.extend_from_slice(&ML_SEMANTICS_ID);
         buf.extend_from_slice(&(self.layers.len() as u32).to_le_bytes());
 
         for layer in &self.layers {
@@ -105,27 +213,70 @@ impl ModelArchive {
         buf
     }
 
-    /// バイト列からデシリアライズ。
+    /// バイト列からデシリアライズ ([`ModelArchive::read`] with [`LegacyPolicy::Accept`],
+    /// the provenance dropped).
+    ///
+    /// `None` for every error of [`ModelArchive::read`], a semantics mismatch included.
+    #[must_use]
+    pub fn deserialize(data: &[u8]) -> Option<Self> {
+        Self::read(data, LegacyPolicy::Accept).ok().map(|(a, _)| a)
+    }
+
+    /// Reads version 2 (identifier compared, see the [module documentation](self)) or
+    /// version 1 (under `legacy`).
     ///
     /// # Errors
     ///
-    /// フォーマットエラー時は `None` を返す。
-    #[must_use]
-    pub fn deserialize(data: &[u8]) -> Option<Self> {
-        if data.len() < 12 {
-            return None;
+    /// [`ArchiveError`]: a short or truncated input, a bad magic, an unknown version, a
+    /// refused version 1 file, or a recorded identifier that is neither this build's nor
+    /// a verified earlier one.
+    pub fn read(data: &[u8], legacy: LegacyPolicy) -> Result<(Self, Provenance), ArchiveError> {
+        if data.len() < 8 {
+            return Err(ArchiveError::TooShort);
         }
         if data[..4] != MAGIC {
-            return None;
+            return Err(ArchiveError::BadMagic);
         }
         let version = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
-        if version != FORMAT_VERSION {
-            return None;
-        }
-        let layer_count = u32::from_le_bytes([data[8], data[9], data[10], data[11]]) as usize;
+        let (provenance, mut offset) = match version {
+            FORMAT_VERSION => {
+                if data.len() < 8 + 32 + 4 {
+                    return Err(ArchiveError::TooShort);
+                }
+                let mut stored = [0u8; 32];
+                stored.copy_from_slice(&data[8..40]);
+                (
+                    check_stored(stored, ML_SEMANTICS_ID, PREVIOUS_ML_SEMANTICS_IDS)?,
+                    40,
+                )
+            }
+            FORMAT_VERSION_V1 => match legacy {
+                LegacyPolicy::Accept => {
+                    if data.len() < 12 {
+                        return Err(ArchiveError::TooShort);
+                    }
+                    (Provenance::V1Legacy, 8)
+                }
+                LegacyPolicy::Refuse => return Err(ArchiveError::LegacyRefused),
+            },
+            other => return Err(ArchiveError::UnsupportedVersion(other)),
+        };
+        let layer_count = u32::from_le_bytes(
+            data[offset..offset + 4]
+                .try_into()
+                .map_err(|_| ArchiveError::TooShort)?,
+        ) as usize;
+        offset += 4;
+        let layers = Self::read_layers(data, offset, layer_count).ok_or(ArchiveError::Truncated)?;
+        Ok((Self { layers }, provenance))
+    }
 
-        let mut offset = 12;
-        let mut layers = Vec::with_capacity(layer_count);
+    fn read_layers(
+        data: &[u8],
+        mut offset: usize,
+        layer_count: usize,
+    ) -> Option<Vec<SerializedLayer>> {
+        let mut layers = Vec::with_capacity(layer_count.min(data.len() / 24));
 
         for _ in 0..layer_count {
             if offset + 24 > data.len() {
@@ -159,7 +310,7 @@ impl ModelArchive {
             });
         }
 
-        Some(Self { layers })
+        Some(layers)
     }
 
     /// `SerializedLayer` から `TernaryWeight` を復元。
@@ -284,6 +435,27 @@ mod tests {
         data.extend_from_slice(&99_u32.to_le_bytes());
         data.extend_from_slice(&0_u32.to_le_bytes());
         assert!(ModelArchive::deserialize(&data).is_none());
+        assert_eq!(
+            ModelArchive::read(&data, LegacyPolicy::Accept).err(),
+            Some(ArchiveError::UnsupportedVersion(99))
+        );
+    }
+
+    #[test]
+    fn a_listed_earlier_identifier_is_verified_previous() {
+        let (cur, old, other) = ([1u8; 32], [2u8; 32], [3u8; 32]);
+        assert_eq!(check_stored(cur, cur, &[old]), Ok(Provenance::Verified));
+        assert_eq!(
+            check_stored(old, cur, &[old]),
+            Ok(Provenance::VerifiedPrevious(old))
+        );
+        assert_eq!(
+            check_stored(other, cur, &[old]),
+            Err(ArchiveError::SemanticsMismatch {
+                stored: other,
+                expected: cur
+            })
+        );
     }
 
     #[test]
