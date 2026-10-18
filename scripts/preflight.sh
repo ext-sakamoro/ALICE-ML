@@ -53,6 +53,9 @@ relint
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; RUSTC_WORKSPACE_WRAPPER="$(rustup which clippy-driver)" cargo rustc --lib --no-default-features --crate-type rlib -- -W clippy::pedantic -W clippy::nursery -D warnings )
 
 step "ci.yml / clippy: Identifier moves (tests, then against the published release)"
+# text files are LF in the index and the working tree (.github/workflows/eol.yml, shared by the ALICE crates)
+python3 scripts/test_check_eol.py
+python3 scripts/check_eol.py
 python3 scripts/test_id_move_check.py
 python3 scripts/id_move_check.py
 
