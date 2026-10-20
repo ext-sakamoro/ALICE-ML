@@ -105,6 +105,10 @@ python3 scripts/test_build_config_guard.py
 python3 scripts/build_config_guard.py
 python3 scripts/test_build_flags_check.py
 
+step "ci.yml / float-environment: Shared files equal ALICE-Law's table"
+python3 scripts/test_shared_files.py
+scripts/shared_files.sh
+
 step "ci.yml / doc: Doc (full native feature set)"
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db" RUSTDOCFLAGS="-Dwarnings"; cargo doc --no-deps --features "$NATIVE_FEATURES" )
 
@@ -228,7 +232,7 @@ scripts/run_tests.sh float_environment=2 -- cargo test --test float_environment
 scripts/run_tests.sh float_environment=2 -- cargo test --release --test float_environment
 
 step "ci.yml test / neon + release-profile.yml: Law edge goldens (debug and release, full native feature set)"
-scripts/run_tests.sh float_edge_golden=2,determinism_golden -- cargo test --features "ffi,simd,parallel,safetensors,db" --test float_edge_golden --test determinism_golden
+scripts/run_tests.sh float_edge_golden=2,determinism_golden,ml_semantics_id,atml_semantics,g7_boundaries -- cargo test --features "ffi,simd,parallel,safetensors,db" --test float_edge_golden --test determinism_golden --test ml_semantics_id --test atml_semantics --test g7_boundaries
 scripts/run_tests.sh float_edge_golden=2,determinism_golden -- cargo test --release --features "ffi,simd,parallel,safetensors,db" --test float_edge_golden --test determinism_golden
 
 step "ci.yml / float-environment: Effective rustc flags (default, full native feature set, no default features)"

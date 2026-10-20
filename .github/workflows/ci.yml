@@ -57,7 +57,7 @@ jobs:
       # ALICE-Law G4, debug x86_64: the signed-zero / exact-cancellation bits of the Law sites
       # (tests/float_edge_golden.rs) and the lattice digests; the counts make an empty run fail
       - name: Law edge goldens (debug, full native feature set)
-        run: scripts/run_tests.sh float_edge_golden=2,determinism_golden -- cargo test --features "$NATIVE_FEATURES" --test float_edge_golden --test determinism_golden
+        run: scripts/run_tests.sh float_edge_golden=2,determinism_golden,ml_semantics_id,atml_semantics,g7_boundaries -- cargo test --features "$NATIVE_FEATURES" --test float_edge_golden --test determinism_golden --test ml_semantics_id --test atml_semantics --test g7_boundaries
       # ALICE-Law G3, syntax-tree pre-check (tools/no-outer-fneg-of-fma, byte-identical to
       # ALICE-LOL's, built with --locked): its own tests, then the check over src/ tests/
       # examples/ benches/ with the exact fma-call counts of
@@ -101,6 +101,15 @@ jobs:
           "$PY" scripts/test_build_config_guard.py
           "$PY" scripts/build_config_guard.py
           "$PY" scripts/test_build_flags_check.py
+      # ALICE-Law G11 (c): the files shared with the other crates are the bytes ALICE-Law's
+      # table records (table and checker fetched at .github/shared-files-pin, both SHA-256
+      # pinned); a difference, an unlisted shared path or nothing compared fails
+      - name: Shared files equal ALICE-Law's table
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" scripts/test_shared_files.py
+          scripts/shared_files.sh
       # no_std is checked as an rlib (the cdylib / staticlib need std's allocator and
       # panic handler), as the no_std job does
       - name: Effective rustc flags (default, full native feature set, no default features)

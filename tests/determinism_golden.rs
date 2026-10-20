@@ -130,17 +130,41 @@ impl Golden {
         self.len(b.len());
         self.0.update(b);
     }
-    fn finish(self, name: &str, expected: &str) {
-        let got = self.0.finalize().iter().fold(String::new(), |mut acc, b| {
+    fn digest(self) -> String {
+        self.0.finalize().iter().fold(String::new(), |mut acc, b| {
             let _ = write!(acc, "{b:02x}");
             acc
-        });
+        })
+    }
+    /// The digest when it is not `expected`
+    fn mismatch(self, expected: &str) -> Option<String> {
+        let got = self.digest();
+        (got != expected).then_some(got)
+    }
+    fn finish(self, name: &str, expected: &str) {
         if std::env::var_os("ALICE_ML_GOLDEN_PRINT").is_some() {
-            println!("GOLDEN {name} {got}");
+            println!("GOLDEN {name} {}", self.digest());
             return;
         }
-        assert_eq!(got, expected, "{name}: output bits moved");
+        if let Some(got) = self.mismatch(expected) {
+            panic!("{name}: output bits moved to {got}, recorded {expected}");
+        }
     }
+}
+
+#[test]
+fn checker_rejects_a_wrong_digest() {
+    let recorded = |bits: &[f32]| {
+        let mut h = Golden::new("canary");
+        h.f32s(bits);
+        h
+    };
+    let expected = recorded(&[1.0, -0.0]).digest();
+    assert_eq!(recorded(&[1.0, -0.0]).mismatch(&expected), None);
+    assert!(
+        recorded(&[1.0, 0.0]).mismatch(&expected).is_some(),
+        "a scenario whose bits moved (-0 to +0) must not match its recorded digest"
+    );
 }
 
 fn with_tensor<R>(data: &mut [f32], f: impl FnOnce(&mut Tensor) -> R) -> R {

@@ -1,0 +1,44 @@
+# ALICE-Law G11: this repository's own rows of conformance/g11.toml (the rows of the checkers the ALICE
+# crates share are generated from ALICE-Law). ALICE-Law's scripts/g11_table_gen.py writes conformance/g11.toml
+# from both (python3 scripts/g11_table_gen.py --repo <this repository> --name ALICE-ML --write, run in an
+# ALICE-Law checkout); the table is committed with the regeneration of ALICE-Law's shared-files table that
+# lists this repository, not before.
+#
+# The golden, identifier and model-file suites are run by scripts/run_tests.sh, which fails a step when a
+# named test binary ran no test; its zero test is therefore the compared-nothing test of each leg, and each
+# canary is a test of a binary the leg names.
+
+[[row]]
+gate = "G4"
+checker = ".github/workflows/ci.yml#- name: Law edge goldens (debug, full native feature set)>scripts/run_tests.sh"
+canary = "tests/determinism_golden.rs::checker_rejects_a_wrong_digest"
+zero = "scripts/test_run_tests.py::RunTests.test_a_named_file_that_ran_zero_fails"
+shared = ["scripts/run_tests.sh", "scripts/test_run_tests.py"]
+
+[[row]]
+gate = "G5"
+checker = ".github/workflows/release-profile.yml#- name: Law goldens (release, default features)>scripts/run_tests.sh"
+canary = "tests/determinism_golden.rs::checker_rejects_a_wrong_digest"
+zero = "scripts/test_run_tests.py::RunTests.test_a_named_file_that_ran_zero_fails"
+shared = ["scripts/run_tests.sh", "scripts/test_run_tests.py"]
+
+[[row]]
+gate = "G6"
+checker = ".github/workflows/ci.yml#- name: Law edge goldens (debug, full native feature set)>scripts/run_tests.sh"
+canary = "tests/ml_semantics_id.rs::the_fold_sees_every_entry_and_its_order_does_not_matter"
+zero = "scripts/test_run_tests.py::RunTests.test_a_named_file_that_ran_zero_fails"
+shared = ["scripts/run_tests.sh", "scripts/test_run_tests.py"]
+
+[[row]]
+gate = "G7"
+checker = ".github/workflows/ci.yml#- name: Law edge goldens (debug, full native feature set)>scripts/run_tests.sh"
+canary = "tests/atml_semantics.rs::another_identifier_is_the_mismatch_naming_both"
+zero = "scripts/test_run_tests.py::RunTests.test_a_named_file_that_ran_zero_fails"
+shared = ["scripts/run_tests.sh", "scripts/test_run_tests.py"]
+
+[[row]]
+gate = "G8"
+checker = ".github/workflows/ci.yml#- name: Law edge goldens (debug, full native feature set)>scripts/run_tests.sh"
+canary = "tests/atml_semantics.rs::a_version_1_file_is_legacy_or_refused"
+zero = "scripts/test_run_tests.py::RunTests.test_a_named_file_that_ran_zero_fails"
+shared = ["scripts/run_tests.sh", "scripts/test_run_tests.py"]
