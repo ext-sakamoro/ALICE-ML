@@ -17,7 +17,7 @@ All notable changes to ALICE-ML will be documented in this file.
 - CI (ALICE-Law G3): fma の結果全体を negate する形の検査を追加 (ALICE-LOL と同一の構文木の前段検査 `tools/no-outer-fneg-of-fma` を `--locked` で、最適化後の LLVM IR の検査 `scripts/fneg_fma_ir_check.py` と試験、47 個の probe) library の source に fma の呼び出しは無く、test に 2 件 (どちらも negate しない)、`assert!` の中の 1 件は理由付きで allowlist に置いた IR の検査は新しい `.github/workflows/g3-ir.yml` が x86_64 (ubuntu-latest) と aarch64 (ubuntu-24.04-arm) の実機 runner で実行する (pyo3 は cross build できない) 実行可否は `scripts/changed_paths.py` (ALICE-DetMath と同一) と `.github/paths/g3-ir.txt` で merge-base(origin/main) から決め、走るべき job が走らなかった時は gate job が red になる `.gitignore` で検査器の `Cargo.lock` を追跡対象にした `alice-law-conformance.toml` の G3 を unverified から pass にした
 
 ### Changed
-- Licence: from `AGPL-3.0-or-later OR LicenseRef-Commercial` to `LicenseRef-Proprietary` from this version (the source stays published for reading; using it needs a written agreement); published versions keep their licence
+- Licence: `AGPL-3.0-or-later OR LicenseRef-Commercial` → `LicenseRef-Proprietary`
 - CI: `scripts/run_tests.sh` と試験 `scripts/test_run_tests.py` を ALICE-LLM と同じ bytes にし、`.github/shared-files-pin` を ALICE-Law の新しい版に移す 名前 `lib` を library の単体試験として数えるようになったが、この repository は `lib` を名指さないので各段の試験の名前と件数は変わらない 試験 `scripts/test_public_text.py` を ALICE-SDF と同じ版にした (公開する text の検査を pin の checker で走らせ、置いた note link を tree と commit message で検出すること、pin の 3 行目 `config-sha256` が設定を承認することを確かめる、network を使う) `scripts/public_text.sh` と public-text の pin は変えないので検査の結果は変わらない
 - CI: `.github/workflows/eol.yml` に top-level の concurrency group を足し (同じ branch の古い run は止め、main の run は commit ごとに残す)、action を commit SHA で固定して checkout に `persist-credentials: false` を付け、`workflow_dispatch` で手動でも走らせられるようにした (ALICE の crate で同じ中身の file、workflow_concurrency.py と workflow_pin_check.py を持つ crate の検査に合わせた)
 
@@ -82,7 +82,7 @@ ALICE-Law の wave: G1 (pyo3 の lint)、G2 (最大・最小・clamp と tie 規
 - **`cargo semver-checks check-release` が `am_ml_arena_reset` / `am_ml_tensor_copy` の `const` 喪失を major 相当として検出する**: 2026-09-16 の `catch_unwind` 導入 commit (`2c958fd`) で全 `extern "C"` 関数が runtime の closure 呼出しになり、`const fn` ではいられなくなったことが原因 本 release の変更とは無関係 (det-math/db の bump・routing は ffi.rs のこの 2 関数に触れていない) CI の `semver-checks` job は `continue-on-error: true` (informational) のため、この break は 0.2.0 以降どの release でも bump の根拠として扱われてこなかった 対応は crate 所有者判断 (別途課題管理に記録)
 
 ### Changed
-- **License: `AGPL-3.0-or-later` → `AGPL-3.0-or-later OR LicenseRef-Commercial` (dual-licensed、2026-09-27)** AGPL 側の条件は変更なし (既存 AGPL 利用者への影響ゼロ)、商用という選択肢が追加されただけ SPDX が AGPL 単独だと cargo-deny / FOSSA / SBOM に「商用オプションなし」と見えるため宣言を dual に 変更点: SPDX / `LICENSE` → `LICENSE-AGPL` rename / `LICENSE-COMMERCIAL.md` (商用トリガー 6 条件 = クローズド製品・商用 SaaS・エッジ・ファームウェア配布・plugin 再配布・プラットフォーム NDA・保証、社内利用は AGPL 側で無償と明記) / README の選択肢表 商用窓口は法人 `contact@extoria.co.jp`
+- License: `AGPL-3.0-or-later` → `AGPL-3.0-or-later OR LicenseRef-Commercial` (2026-09-27)
 
 ### Added
 - **`calibration` module** — ALICE-* で初めての確率校正 これまで ALICE-* 全体に
