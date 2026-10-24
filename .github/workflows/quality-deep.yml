@@ -15,12 +15,6 @@ on:
   schedule:
     - cron: '0 18 * * 0'   # 日曜 03:00 JST
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'Cargo.toml'
-      - '.github/workflows/quality-deep.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

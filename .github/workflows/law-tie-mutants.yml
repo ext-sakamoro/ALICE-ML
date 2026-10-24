@@ -21,15 +21,6 @@ on:
       - 'scripts/law_tie_mutants.py'
       - 'scripts/law_tie_equivalents.tsv'
       - '.github/workflows/law-tie-mutants.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'src/tensor.rs'
-      - 'src/law_math.rs'
-      - 'tests/law_ties.rs'
-      - 'scripts/law_tie_mutants.py'
-      - 'scripts/law_tie_equivalents.tsv'
-      - '.github/workflows/law-tie-mutants.yml'
   schedule:
     # Sunday 19:40 UTC (04:40 JST Monday)
     - cron: '40 19 * * 0'
