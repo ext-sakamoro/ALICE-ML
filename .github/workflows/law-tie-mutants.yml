@@ -13,14 +13,7 @@ name: Law tie mutants (AVX2)
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'src/tensor.rs'
-      - 'src/law_math.rs'
-      - 'tests/law_ties.rs'
-      - 'scripts/law_tie_mutants.py'
-      - 'scripts/law_tie_equivalents.tsv'
-      - '.github/workflows/law-tie-mutants.yml'
+    branches: [main, 'ci/**']
   pull_request:
     branches: [main]
     paths:
@@ -30,6 +23,7 @@ on:
       - 'scripts/law_tie_mutants.py'
       - 'scripts/law_tie_equivalents.tsv'
       - '.github/workflows/law-tie-mutants.yml'
+      - '.github/paths/law-tie-mutants.txt'
   schedule:
     # Sunday 19:40 UTC (04:40 JST Monday)
     - cron: '40 19 * * 0'
@@ -46,7 +40,38 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # which files changed: a new or force-pushed branch is compared with merge-base(origin/main),
+  # another push with before..after, a pull request with base...head; schedule and manual
+  # runs always run; any error runs (fail-closed) — scripts/changed_paths.py
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after || github.sha }}
+          CREATED: ${{ github.event.created }}
+          FORCED: ${{ github.event.forced }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python3 scripts/changed_paths.py decide --event "$EVENT"
+          --before "$BEFORE" --after "$AFTER" --created "$CREATED" --forced "$FORCED"
+          --base "$PR_BASE" --head "$PR_HEAD"
+          --patterns-file .github/paths/law-tie-mutants.txt
+
   avx2-mutants:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     name: AVX2 sites rewritten as comparisons (x86_64)
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -70,3 +95,16 @@ jobs:
         run: cargo test --features simd --test law_ties --test determinism_golden
       - name: Mutants (count killed, fail on an unlisted survivor or on none run)
         run: python3 scripts/law_tie_mutants.py --avx2-only -- --features simd --test law_ties --test determinism_golden
+
+  gate:
+    name: Gate
+    if: always()
+    needs: [changes, avx2-mutants]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: gate
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/changed_paths.py gate --needs-json "$NEEDS"

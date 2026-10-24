@@ -1,0 +1,10 @@
+# the paths that run .github/workflows/law-tie-mutants.yml (scripts/changed_paths.py decide)
+# on.pull_request.paths of the workflow, when present, must list the same patterns in the same order
+# (scripts/changed_paths.py sync)
+src/tensor.rs
+src/law_math.rs
+tests/law_ties.rs
+scripts/law_tie_mutants.py
+scripts/law_tie_equivalents.tsv
+.github/workflows/law-tie-mutants.yml
+.github/paths/law-tie-mutants.txt
