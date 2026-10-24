@@ -4,7 +4,7 @@
 [![docs.rs](https://img.shields.io/docsrs/alice-ml)](https://docs.rs/alice-ml)
 [![MSRV](https://img.shields.io/crates/msrv/alice-ml)](#msrv)
 [![CI](https://github.com/ext-sakamoro/ALICE-ML/actions/workflows/ci.yml/badge.svg)](https://github.com/ext-sakamoro/ALICE-ML/actions/workflows/ci.yml)
-[![License](https://img.shields.io/crates/l/alice-ml.svg)](#license)
+[![License](https://img.shields.io/badge/license-Proprietary-lightgrey)](LICENSE-Proprietary)
 
 [English](README.md) | 日本語
 
@@ -209,5 +209,8 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `e75d038a6aaa` と
 
 ## ライセンス
 
-`AGPL-3.0-or-later OR LicenseRef-Commercial` [`LICENSE-AGPL`](LICENSE-AGPL) と
-[`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md) を参照
+この版から `LicenseRef-Proprietary`: ソースは閲覧用に公開しており、利用・複製・改変・配布には
+著作権者との書面での合意が必要 条文は [LICENSE-Proprietary](LICENSE-Proprietary)
+それより前に公開した版は、公開時のライセンスのまま
+
+ライセンスの問い合わせ: <contact@extoria.co.jp>
