@@ -92,7 +92,7 @@ version = "*"
 expression = "ISC"
 license-files = [{ path = "LICENSE", hash = 0x001c7e6c }]
 
-# AGPL sibling dep (db feature、crates.io の alice-db 0.2.0-beta.2)
+# sibling dep (db feature、crates.io の alice-db 0.2.0-beta.2、公開時の licence を例外で許可)
 [[licenses.exceptions]]
 name = "alice-db"
 allow = ["AGPL-3.0", "AGPL-3.0-only", "AGPL-3.0-or-later"]

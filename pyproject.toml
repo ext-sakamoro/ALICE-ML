@@ -6,7 +6,7 @@ build-backend = "maturin"
 name = "alice-ml"
 requires-python = ">=3.8"
 description = "1.58-bit Ternary Inference Engine — No multiplication, only addition"
-license = { text = "LicenseRef-Proprietary" }
+license = "LicenseRef-Proprietary"
 authors = [{ name = "Moroya Sakamoto" }]
 classifiers = [
     "Programming Language :: Rust",
