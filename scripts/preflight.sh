@@ -6,7 +6,7 @@
 # Run `--quick` before every push.
 #
 # usage: scripts/preflight.sh [--quick]   (--quick skips the test / bench suites)
-# generator rev 9c55559df3342be2b5c81b4d8999f394021b7276
+# generator rev 0f7c30b70f61687c1b20d3a25f18de0c87901c85
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # --- heavy slot (begin) ---
@@ -235,7 +235,9 @@ heavy_slot_watch() {
 }
 # --- heavy slot (end) ---
 heavy_slot_acquire "$(basename "$PWD")" preflight || exit 1
-trap heavy_slot_release EXIT
+gh_files=$(mktemp -d)
+export GITHUB_OUTPUT="${GITHUB_OUTPUT:-$gh_files/output}" GITHUB_ENV="${GITHUB_ENV:-$gh_files/env}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-$gh_files/summary}" GITHUB_PATH="${GITHUB_PATH:-$gh_files/path}"
+trap 'heavy_slot_release; rm -rf "$gh_files"' EXIT
 heavy_slot_cap_ok || exit 2
 heavy_slot_watch "$$" >/dev/null &
 
