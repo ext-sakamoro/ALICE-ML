@@ -110,6 +110,11 @@ jobs:
           PY=$(command -v python3 || command -v python)
           "$PY" scripts/test_shared_files.py
           scripts/shared_files.sh
+      # ALICE-Law G11: every gate declared pass has a row in conformance/g11.toml; the checker
+      # (scripts/g11_table_check.py) is fetched at .github/g11-table-pin and SHA-256 pinned; 0 compared fails
+      - name: G11 table matches the declared gates
+        shell: bash
+        run: scripts/g11_table.sh
       # no_std is checked as an rlib (the cdylib / staticlib need std's allocator and
       # panic handler), as the no_std job does
       - name: Effective rustc flags (default, full native feature set, no default features)
