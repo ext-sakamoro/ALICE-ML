@@ -28,6 +28,9 @@ fi
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 git init -q "$tmp/law"
+# the checkout keeps ALICE-Law's bytes: a CRLF conversion (core.autocrlf on Windows) makes the self-check refuse
+# the checkout as changed and exit 2
+git -C "$tmp/law" config core.autocrlf false
 if ! git -C "$tmp/law" fetch -q --depth 1 https://github.com/ext-sakamoro/ALICE-Law "$rev"; then
   echo "ALICE-Law $rev: fetch failed" >&2
   exit 2
