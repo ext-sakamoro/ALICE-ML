@@ -115,6 +115,11 @@ jobs:
       - name: G11 table matches the declared gates
         shell: bash
         run: scripts/g11_table.sh
+      # ALICE-Law G11 self-check at .github/shared-files-pin: the four G11 checks in one command; a G11 pass
+      # with an own copy off its row's target, or nothing compared, fails
+      - name: G11 self-check (ALICE-Law at the shared-files pin)
+        shell: bash
+        run: scripts/g11_self_check.sh
       # no_std is checked as an rlib (the cdylib / staticlib need std's allocator and
       # panic handler), as the no_std job does
       - name: Effective rustc flags (default, full native feature set, no default features)

@@ -291,6 +291,9 @@ step "ci.yml / float-environment: Shared files equal ALICE-Law's table"
 step "ci.yml / float-environment: G11 table matches the declared gates"
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; scripts/g11_table.sh )
 
+step "ci.yml / float-environment: G11 self-check (ALICE-Law at the shared-files pin)"
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; scripts/g11_self_check.sh )
+
 step "ci.yml / float-environment: Effective rustc flags (default, full native feature set, no default features)"
 (
   export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"
