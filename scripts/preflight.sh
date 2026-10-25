@@ -6,7 +6,7 @@
 # Run `--quick` before every push.
 #
 # usage: scripts/preflight.sh [--quick]   (--quick skips the test / bench suites)
-# generator rev 0f7c30b70f61687c1b20d3a25f18de0c87901c85
+# generator rev 5d880c90b0eda591eac24285a4b3d36de84fe794
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # --- heavy slot (begin) ---
@@ -236,8 +236,27 @@ heavy_slot_watch() {
 # --- heavy slot (end) ---
 heavy_slot_acquire "$(basename "$PWD")" preflight || exit 1
 gh_files=$(mktemp -d)
-export GITHUB_OUTPUT="${GITHUB_OUTPUT:-$gh_files/output}" GITHUB_ENV="${GITHUB_ENV:-$gh_files/env}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-$gh_files/summary}" GITHUB_PATH="${GITHUB_PATH:-$gh_files/path}"
+gh_local=0
+[ -z "${GITHUB_ENV:-}" ] && gh_local=1
+export GITHUB_OUTPUT="${GITHUB_OUTPUT:-$gh_files/output}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-$gh_files/summary}"
 trap 'heavy_slot_release; rm -rf "$gh_files"' EXIT
+# gh_step <job>: this job's $GITHUB_ENV / $GITHUB_PATH, with what its earlier steps wrote loaded
+gh_step() {
+  [ "$gh_local" = 1 ] || return 0
+  export GITHUB_ENV="$gh_files/$1.env" GITHUB_PATH="$gh_files/$1.path"
+  touch "$GITHUB_ENV" "$GITHUB_PATH"
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      '') ;;
+      *'<<'*) echo "preflight: a multi-line \$GITHUB_ENV value is not reproduced here: $line" >&2; return 1 ;;
+      [A-Za-z_]*=*) export "${line%%=*}=${line#*=}" ;;
+      *) echo "preflight: not a NAME=value line in \$GITHUB_ENV: $line" >&2; return 1 ;;
+    esac
+  done < "$GITHUB_ENV"
+  while IFS= read -r line || [ -n "$line" ]; do [ -n "$line" ] && PATH="$line:$PATH"; done < "$GITHUB_PATH"
+  export PATH
+}
 heavy_slot_cap_ok || exit 2
 heavy_slot_watch "$$" >/dev/null &
 
@@ -284,143 +303,259 @@ has_toolchain 1.87 || { echo "missing toolchain 1.87 (rustup toolchain install 1
 
 step "ci.yml / float-environment: Shared files equal ALICE-Law's table"
 (
+  gh_step ci.yml.float-environment
+(
   export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"
   PY=$(command -v python3 || command -v python)
   "$PY" scripts/test_shared_files.py
   scripts/shared_files.sh
 )
+)
 
 step "ci.yml / float-environment: G11 table matches the declared gates"
+(
+  gh_step ci.yml.float-environment
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; scripts/g11_table.sh )
+)
 
 step "ci.yml / float-environment: G11 self-check (ALICE-Law at the shared-files pin)"
+(
+  gh_step ci.yml.float-environment
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; scripts/g11_self_check.sh )
+)
 
 step "ci.yml / float-environment: Effective rustc flags (default, full native feature set, no default features)"
+(
+  gh_step ci.yml.float-environment
 (
   export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"
   python3 scripts/build_flags_check.py -- cargo check --release --lib
   python3 scripts/build_flags_check.py -- cargo check --release --lib --features "$NATIVE_FEATURES"
   python3 scripts/build_flags_check.py -- cargo rustc --release --lib --no-default-features --crate-type rlib
 )
+)
 
 step "ci.yml / neon: Clippy (neon, all targets, pedantic + nursery)"
+(
+  gh_step ci.yml.neon
 relint
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo clippy --features "$NATIVE_FEATURES,neon" --all-targets -- -W clippy::pedantic -W clippy::nursery -D warnings )
+)
 
 step "ci.yml / no_std: Build (no_std, host)"
+(
+  gh_step ci.yml.no_std
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo rustc --lib --no-default-features --crate-type rlib )
+)
 
 step "ci.yml / no_std: Build (no_std + simd, host)"
+(
+  gh_step ci.yml.no_std
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo rustc --lib --no-default-features --features simd --crate-type rlib )
+)
 
 step "ci.yml / no_std: Build (no_std, bare-metal thumbv7em-none-eabihf)"
+(
+  gh_step ci.yml.no_std
 grep -q '^thumbv7em-none-eabihf$' <<<"$(rustup target list --installed)" || rustup target add thumbv7em-none-eabihf
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo rustc --lib --no-default-features --crate-type rlib --target thumbv7em-none-eabihf )
+)
 
 step "ci.yml / no_std: Clippy (no_std, pedantic + nursery)"
+(
+  gh_step ci.yml.no_std
 relint
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; RUSTC_WORKSPACE_WRAPPER="$(rustup which clippy-driver)" cargo rustc --lib --no-default-features --crate-type rlib -- -W clippy::pedantic -W clippy::nursery -D warnings )
+)
 
 step "ci.yml / clippy: Clippy (default features, all targets)"
+(
+  gh_step ci.yml.clippy
 relint
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo clippy --all-targets -- -D warnings )
+)
 
 step "ci.yml / clippy: Clippy (full native feature set, all targets, pedantic + nursery)"
+(
+  gh_step ci.yml.clippy
 relint
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo clippy --features "$NATIVE_FEATURES" --all-targets -- -W clippy::pedantic -W clippy::nursery -D warnings )
+)
 
 step "ci.yml / clippy: Clippy (pyo3, lib)"
+(
+  gh_step ci.yml.clippy
 relint
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo clippy --lib --features pyo3 -- -D warnings )
+)
 
 step "ci.yml / clippy: Clippy canary data (generator tests)"
+(
+  gh_step ci.yml.clippy
 relint
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/test_gen_clippy_canary_calls.py )
+)
 
 step "ci.yml / clippy: Clippy canary data (generated from clippy.toml, no drift)"
+(
+  gh_step ci.yml.clippy
 relint
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/gen_clippy_canary_calls.py --check )
+)
 
 step "ci.yml / clippy: Clippy canary (tests)"
+(
+  gh_step ci.yml.clippy
 relint
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/test_clippy_canary.py )
+)
 
 step "ci.yml / clippy: README ALICE-Law block preflight check (tests)"
+(
+  gh_step ci.yml.clippy
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/test_law_readme_block_check.py )
+)
 
 step "ci.yml / clippy: Clippy canary (every planted banned call is flagged)"
+(
+  gh_step ci.yml.clippy
 relint
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/clippy_canary.py )
+)
 
 step "ci.yml / clippy: Identifier moves (tests)"
+(
+  gh_step ci.yml.clippy
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/test_id_move_check.py )
+)
 
 step "ci.yml / clippy: Identifier moves (the release compared with)"
+(
+  gh_step ci.yml.clippy
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; echo "crate=$(python3 scripts/id_move_check.py --print-base)" >> "$GITHUB_OUTPUT" )
+)
 
 step "ci.yml / clippy: Identifier moves (against the published release)"
+(
+  gh_step ci.yml.clippy
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/id_move_check.py )
+)
 
 step "ci.yml / feature-powerset: Powerset (std + {ffi, simd, parallel, safetensors} depth 2)"
+(
+  gh_step ci.yml.feature-powerset
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo hack check --lib --feature-powerset --depth 2 --exclude-features pyo3,neon --features std )
+)
 
 step "ci.yml / msrv: check_msrv oracle (検査器自身の試験)"
+(
+  gh_step ci.yml.msrv
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db" RUSTUP_TOOLCHAIN="1.87" CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS="fallback"; python3 scripts/test_check_msrv.py )
+)
 
 step "ci.yml / msrv: check_msrv (rust-version と toolchain の版が一致し、実 rustc がその版か)"
+(
+  gh_step ci.yml.msrv
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db" RUSTUP_TOOLCHAIN="1.87" CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS="fallback"; python3 scripts/check_msrv.py --rustc )
+)
 
 step "ci.yml / msrv: Check (default + full native feature set, all targets)"
+(
+  gh_step ci.yml.msrv
 (
   export CARGO_TERM_COLOR="always" RUSTFLAGS="" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db" RUSTUP_TOOLCHAIN="1.87" CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS="fallback"
   cargo +1.87 check --all-targets
   cargo +1.87 check --all-targets --features "$NATIVE_FEATURES"
 )
+)
 
 step "ci.yml / msrv: Build tests (full native feature set)"
+(
+  gh_step ci.yml.msrv
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db" RUSTUP_TOOLCHAIN="1.87" CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS="fallback"; cargo +1.87 test --no-run --lib --tests --features "$NATIVE_FEATURES" )
+)
 
 step "ci.yml / msrv: Build (no_std rlib)"
+(
+  gh_step ci.yml.msrv
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db" RUSTUP_TOOLCHAIN="1.87" CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS="fallback"; cargo +1.87 rustc --lib --no-default-features --crate-type rlib )
+)
 
 step "ci.yml / fmt: run"
+(
+  gh_step ci.yml.fmt
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo fmt -- --check )
+)
 
 step "ci.yml / fmt: no-direct-rkyv guard (tests)"
+(
+  gh_step ci.yml.fmt
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/test_no_direct_rkyv.py )
+)
 
 step "ci.yml / fmt: no-direct-rkyv guard"
+(
+  gh_step ci.yml.fmt
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/no_direct_rkyv.py )
+)
 
 step "ci.yml / doc: Doc (full native feature set)"
+(
+  gh_step ci.yml.doc
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db" RUSTDOCFLAGS="-Dwarnings"; cargo doc --no-deps --features "$NATIVE_FEATURES" )
+)
 
 step "ci.yml / actionlint: actionlint"
+(
+  gh_step ci.yml.actionlint
 actionlint .github/workflows/*.yml
+)
 
 step "ci.yml / readme-sync: readme_sync oracle (検査器自身の試験)"
+(
+  gh_step ci.yml.readme-sync
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/test_readme_sync.py )
+)
 
 step "ci.yml / readme-sync: readme_sync (README / README_JP / docs/MODULES.md の check)"
+(
+  gh_step ci.yml.readme-sync
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/readme_sync.py --check )
+)
 
 step "ci.yml / law-g1-banned-list: check_g1_banned_list oracle (検査器自身の試験)"
+(
+  gh_step ci.yml.law-g1-banned-list
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/test_check_g1_banned_list.py )
+)
 
 step "ci.yml / law-g1-banned-list: law_tie_mutants.py (tests)"
+(
+  gh_step ci.yml.law-g1-banned-list
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/test_law_tie_mutants.py )
+)
 
 step "ci.yml / law-g1-banned-list: check_g1_banned_list (clippy.toml が .github/law-g1-pin の G1 一覧を全部 ban しているか)"
+(
+  gh_step ci.yml.law-g1-banned-list
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/check_g1_banned_list.py )
+)
 
 step "security-audit.yml / deny: Run cargo deny check all"
+(
+  gh_step security-audit.yml.deny
 ( export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"; cargo deny --all-features check all )
+)
 
 step "security-audit.yml / unused-deps: cargo machete"
+(
+  gh_step security-audit.yml.unused-deps
 cargo machete
+)
 
 step "security-audit.yml / stub-guard: Detect panic!(STUB) / dbg!() in src/** (block)"
+(
+  gh_step security-audit.yml.stub-guard
 (
   export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
   set -eo pipefail
@@ -442,8 +577,11 @@ step "security-audit.yml / stub-guard: Detect panic!(STUB) / dbg!() in src/** (b
   fi
   echo "✓ No panic!(STUB) / dbg!() in src/ (excluding src/bin/)"
 )
+)
 
 step "security-audit.yml / stub-guard: Detect todo!() / unimplemented!() in src/** (informational)"
+(
+  gh_step security-audit.yml.stub-guard
 (
   export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
   set -eo pipefail
@@ -463,8 +601,11 @@ step "security-audit.yml / stub-guard: Detect todo!() / unimplemented!() in src/
     echo "✓ No todo!() / unimplemented!() in src/"
   fi
 )
+)
 
 step "security-audit.yml / stub-guard: Detect TODO / FIXME / XXX / HACK (informational)"
+(
+  gh_step security-audit.yml.stub-guard
 (
   export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
   set -eo pipefail
@@ -476,11 +617,17 @@ step "security-audit.yml / stub-guard: Detect TODO / FIXME / XXX / HACK (informa
     echo "✓ No TODO/FIXME/XXX/HACK in src/"
   fi
 )
+)
 
 step "security-audit.yml / package-integrity: cargo package (.crate を作る)"
+(
+  gh_step security-audit.yml.package-integrity
 ( export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"; cargo package --no-verify --allow-dirty )
+)
 
 step "security-audit.yml / package-integrity: 展開して隔離 build"
+(
+  gh_step security-audit.yml.package-integrity
 (
   export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
   set -euo pipefail
@@ -495,8 +642,11 @@ step "security-audit.yml / package-integrity: 展開して隔離 build"
   printf '\n[workspace]\n' >> Cargo.toml
   cargo check --all-features
 )
+)
 
 step "fuzz.yml / fuzz: Build fuzz target [target=fuzz_tensor_deserialize]"
+(
+  gh_step fuzz.yml.fuzz
 if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
   (
     export CARGO_TERM_COLOR="always"
@@ -506,8 +656,11 @@ if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
 else
   echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_tensor_deserialize]: nightly / cargo-fuzz not installed' >&2
 fi
+)
 
 step "fuzz.yml / fuzz: Build fuzz target [target=fuzz_model_forward]"
+(
+  gh_step fuzz.yml.fuzz
 if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
   (
     export CARGO_TERM_COLOR="always"
@@ -517,8 +670,11 @@ if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
 else
   echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_model_forward]: nightly / cargo-fuzz not installed' >&2
 fi
+)
 
 step "fuzz.yml / fuzz: Build fuzz target [target=fuzz_weights_load]"
+(
+  gh_step fuzz.yml.fuzz
 if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
   (
     export CARGO_TERM_COLOR="always"
@@ -528,30 +684,51 @@ if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
 else
   echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_weights_load]: nightly / cargo-fuzz not installed' >&2
 fi
+)
 
 if [[ $quick -eq 1 ]]; then
   echo; echo "preflight --quick OK (test / bench suites skipped)"; exit 0
 fi
 
 step "ci.yml / test: Test (default)"
+(
+  gh_step ci.yml.test
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo test --lib --tests )
+)
 
 step "ci.yml / test: Test (simd)"
+(
+  gh_step ci.yml.test
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db" ALICE_ML_REQUIRE_AVX2="1"; cargo test --lib --tests --features simd )
+)
 
 step "ci.yml / test: Test (full native feature set)"
+(
+  gh_step ci.yml.test
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db" ALICE_ML_REQUIRE_AVX2="1"; cargo test --lib --tests --features "$NATIVE_FEATURES" )
+)
 
 step "ci.yml / test: AVX2 lane test of the Law max / min (count in the log)"
+(
+  gh_step ci.yml.test
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db" ALICE_ML_REQUIRE_AVX2="1"; cargo test --lib --features simd law_math::tests::avx2_lanes_equal_the_scalar_helpers_over_every_pair -- --exact --nocapture )
+)
 
 step "ci.yml / test: Thread-count independence of the parallel batch"
+(
+  gh_step ci.yml.test
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; scripts/run_tests.sh parallel_order=2 -- cargo test --features parallel --test parallel_order )
+)
 
 step "ci.yml / test: Law edge goldens (debug, full native feature set)"
+(
+  gh_step ci.yml.test
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; scripts/run_tests.sh float_edge_golden=2,determinism_golden,ml_semantics_id,atml_semantics,g7_boundaries -- cargo test --features "$NATIVE_FEATURES" --test float_edge_golden --test determinism_golden --test ml_semantics_id --test atml_semantics --test g7_boundaries )
+)
 
 step "ci.yml / test: No negated fma result (syntax tree, tests then check)"
+(
+  gh_step ci.yml.test
 (
   export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"
   cargo fmt --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml -- --check
@@ -560,21 +737,33 @@ step "ci.yml / test: No negated fma result (syntax tree, tests then check)"
   # scripts/changed_paths.py decides whether g3-ir.yml's IR job runs; its own tests
   python3 scripts/test_changed_paths.py
 )
+)
 
 step "ci.yml / float-environment: Float environment (debug and release)"
+(
+  gh_step ci.yml.float-environment
 (
   export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"
   scripts/run_tests.sh float_environment=2 -- cargo test --test float_environment
   scripts/run_tests.sh float_environment=2 -- cargo test --release --test float_environment
 )
+)
 
 step "ci.yml / neon: Test (neon)"
+(
+  gh_step ci.yml.neon
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; cargo test --lib --tests --features "$NATIVE_FEATURES,neon" )
+)
 
 step "ci.yml / neon: Law edge goldens (debug, aarch64, neon)"
+(
+  gh_step ci.yml.neon
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; scripts/run_tests.sh float_edge_golden=2,determinism_golden -- cargo test --features "$NATIVE_FEATURES,neon" --test float_edge_golden --test determinism_golden )
+)
 
 step "security-audit.yml / audit: Run cargo audit"
+(
+  gh_step security-audit.yml.audit
 (
   export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
   # RUSTSEC-2026-0235 (rkyv 0.7 Rc/Arc archive validation): rkyv is reached only
@@ -590,8 +779,11 @@ step "security-audit.yml / audit: Run cargo audit"
     --ignore RUSTSEC-2026-0192 \
     --ignore RUSTSEC-2026-0235
 )
+)
 
 step "security-audit.yml / coverage: Run coverage"
+(
+  gh_step security-audit.yml.coverage
 (
   log="$(mktemp)"
   set +e
@@ -604,6 +796,7 @@ step "security-audit.yml / coverage: Run coverage"
   set -e
   if [ -z "${n}" ] || [ "${n}" -eq 0 ]; then echo 'security-audit.yml / coverage: Run coverage: cargo-llvm-cov compared nothing (continue-on-error in CI; a run with no count fails)' >&2; exit 1; fi
   echo 'PREFLIGHT-INFO: security-audit.yml / coverage: Run coverage: continue-on-error in CI, '"exit ${rc}, ${n} compared" >&2
+)
 )
 
 echo; echo "preflight OK"
