@@ -171,7 +171,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `9cb423c95a03` と
 | | |
 |---|---|
 | release train | alice-ml 0.2.0 (published)、Law への依存: なし |
-| 算術 | train の alice-det-math 0.5.1、算術の識別子 `85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315` この crate の要求は `alice-det-math = "0.5.1"` |
+| 算術 | train の alice-det-math 0.5.1、算術の識別子 `85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315` この crate の要求は `alice-det-math = "0.5.2"` |
 | end to end 検査 | end to end 検査の対象外 |
 
 ### 適合 (G1-G14)
@@ -183,7 +183,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `9cb423c95a03` と
 | G3 no-outer-fneg-of-fma | 適合 | no fused multiply-add call in the library sources (clippy.toml also bans mul_add there): the syntax-tree check reads 37 files and counts 2 fma-family calls, … |
 | G4 debug-release-arch-goldens | 適合 | the AVX2 lanes of law_math are not covered by this golden on a local x86_64 (Rosetta 2 has no AVX2); on CI they are taken when the runner reports avx2 and are … |
 | G5 release-profile-test-leg | 適合 | the x86_64 leg is not claimed to cover the AVX2 lanes (taken only when the runner reports avx2, printed in the log); the hardware fma claim rests on the … |
-| G6 semantics-id | 適合 | hex with alice-det-math 0.5.1: a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b. The identifier attests the pinned kernels (relu, max_min, … |
+| G6 semantics-id | 適合 | hex with alice-det-math 0.5.2 at 39507d1b: 8464fe594013020b37c94d790f15167244074f3892a99d3c9030bd66ba4ed982 (with 0.5.1: … |
 | G7 handshake-carries-id | 適合 | the list of type-erasing boundaries that receive another Law-bearing crate's value is empty: the C ABI and the Python exports take the caller's numbers, the … |
 | G8 persisted-semantics-id | 適合 | the identifier recorded is ML_SEMANTICS_ID (G6): it pins the quantiser whose scale and packed values the file stores, and the det-math generation. db_bridge … |
 | G9 persisted-meaning-change-is-major | 適合 | definition: ML_SEMANTICS_ID ([[id]] in scripts/id_move.toml with PREVIOUS_ML_SEMANTICS_IDS) may move only with a breaking version, or keeping the released … |
