@@ -121,7 +121,7 @@ fn every_row_is_the_fold_of_the_pins() {
         ML_SEMANTICS_ID,
         semantics_id_for(&alice_det_math::SEMANTICS_ID)
     );
-    // an earlier identifier is never the current one (none yet: 0.4.0 is the first)
+    // an earlier identifier is never the current one
     assert!(!PREVIOUS_ML_SEMANTICS_IDS.contains(&ML_SEMANTICS_ID));
     assert_eq!(hex(&ML_SEMANTICS_ID), hex(&fold(ML_SEMANTICS_PINS)));
 }
@@ -130,7 +130,41 @@ fn every_row_is_the_fold_of_the_pins() {
 fn the_documented_hex_is_the_identifier() {
     assert_eq!(
         hex(&ML_SEMANTICS_ID),
+        // the fold recomputed outside this toolchain from the documented procedure, which
+        // also reproduces the previous a5472370… with alice-det-math 0.5.1's identifier
+        "8464fe594013020b37c94d790f15167244074f3892a99d3c9030bd66ba4ed982"
+    );
+}
+
+/// The identifier with `alice-det-math` 0.5.1 (`85e08846…`) is the fold of this build's pins
+/// (every golden unchanged) with that det-math identifier, and it is kept as a previous one
+#[test]
+fn the_previous_identifier_is_the_fold_under_the_previous_det_math_identifier() {
+    let det_math_0_5_1 = ML_SEMANTICS_BY_DET_MATH
+        .iter()
+        .map(|(d, _)| d)
+        .find(|d| {
+            hex(d.as_slice()) == "85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315"
+        })
+        .expect("a row for alice-det-math 0.5.1");
+    let entries: Vec<(&str, [u8; 32])> = ML_SEMANTICS_PINS
+        .iter()
+        .map(|&(n, d)| {
+            if n == "alice-det-math" {
+                (n, *det_math_0_5_1)
+            } else {
+                (n, d)
+            }
+        })
+        .collect();
+    let previous = fold(&entries);
+    assert_eq!(
+        hex(&previous),
         "a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b"
+    );
+    assert!(
+        PREVIOUS_ML_SEMANTICS_IDS.contains(&previous),
+        "the identifier with alice-det-math 0.5.1 is not kept as a previous one"
     );
 }
 

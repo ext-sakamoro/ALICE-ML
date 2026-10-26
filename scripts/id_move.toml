@@ -4,7 +4,17 @@
 package = "alice-ml"
 manifest = "Cargo.toml"
 tags = ["v{version}", "alice-ml-v{version}"]
+# the features rustdoc reads (completeness) and the previous-tests run with: every feature but
+# pyo3, whose extension-module build does not link a test binary, and neon, which builds only on
+# aarch64 (neither defines a [u8; 32] constant)
+doc-features = ["std", "ffi", "simd", "parallel", "db", "safetensors"]
 
 [[id]]
 path = "alice_ml::semantics::ML_SEMANTICS_ID"
 previous = "alice_ml::semantics::PREVIOUS_ML_SEMANTICS_IDS"
+# the tests that refold this build's pins under the previous alice-det-math identifier and read a
+# file stamped with it: each must pass, and fail once the old value is taken out of the list
+previous-tests = [
+    "tests/ml_semantics_id.rs::the_previous_identifier_is_the_fold_under_the_previous_det_math_identifier",
+    "tests/atml_semantics.rs::a_file_with_the_previous_identifier_reads_as_verified_previous",
+]

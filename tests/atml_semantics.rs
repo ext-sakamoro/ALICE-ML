@@ -94,6 +94,36 @@ fn another_identifier_is_the_mismatch_naming_both() {
     );
 }
 
+/// A file written under the identifier with `alice-det-math` 0.5.1 (`a5472370…`, kept in
+/// `PREVIOUS_ML_SEMANTICS_IDS`: every pinned kernel gives the same bits) reads back as
+/// `VerifiedPrevious` with the same layers, through both readers
+#[test]
+fn a_file_with_the_previous_identifier_reads_as_verified_previous() {
+    let previous: [u8; 32] = core::array::from_fn(|i| {
+        u8::from_str_radix(
+            &"a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b"[2 * i..2 * i + 2],
+            16,
+        )
+        .expect("hex")
+    });
+    assert_ne!(previous, ML_SEMANTICS_ID);
+    let mut bytes = archive().serialize();
+    bytes[8..40].copy_from_slice(&previous);
+    let (read, provenance) =
+        ModelArchive::read(&bytes, LegacyPolicy::Refuse).expect("a previous identifier is read");
+    assert_eq!(provenance, Provenance::VerifiedPrevious(previous));
+    assert_eq!(read.layer_count(), 2);
+    let fc2 = read.find_layer("fc2").expect("fc2");
+    let own = archive();
+    let want = own.find_layer("fc2").expect("fc2");
+    assert_eq!(fc2.in_features, want.in_features);
+    assert_eq!(fc2.packed, want.packed);
+    assert!(
+        LayerStreamer::from_bytes(&bytes, StreamerConfig::default(), LegacyPolicy::Refuse).is_ok(),
+        "the streaming reader accepts the previous identifier too"
+    );
+}
+
 #[test]
 fn a_version_1_file_is_legacy_or_refused() {
     let v1 = v1_file();

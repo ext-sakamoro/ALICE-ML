@@ -23,13 +23,6 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 version = 2
 yanked = "deny"
 ignore = [
-    # RUSTSEC-2026-0235 (rkyv 0.7 Rc/Arc archive validation): rkyv is reached only
-    # through alice-db (db feature), whose archived types (SegmentMetadata / DataSegment /
-    # ModelType / DataType) hold no Rc / Arc, so the advisory does not apply. This crate
-    # neither depends on rkyv nor archives anything; scripts/no_direct_rkyv.py fails as soon
-    # as either changes. The root fix is alice-db moving off rkyv 0.7 (pending); the entry
-    # goes when that release is consumed.
-    "RUSTSEC-2026-0235",
     # bincode 2.x unmaintained (postcard 移行コスト高)
     "RUSTSEC-2025-0141",
     # paste 1.0.15 unmaintained (pyo3-macros / bytemuck transitive)

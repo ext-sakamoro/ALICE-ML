@@ -7,10 +7,10 @@
 //! call), into one 32-byte value. Two builds with the same identifier give the same bits
 //! on every pinned kernel; a build that changes any of them has a different value.
 //!
-//! # Hex form (with `alice-det-math` 0.5.1; other generations in [`ML_SEMANTICS_BY_DET_MATH`])
+//! # Hex form (with `alice-det-math` 0.5.2 at 39507d1b; other generations in [`ML_SEMANTICS_BY_DET_MATH`])
 //!
 //! ```text
-//! a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b
+//! 8464fe594013020b37c94d790f15167244074f3892a99d3c9030bd66ba4ed982
 //! ```
 //!
 //! # Entries
@@ -117,7 +117,7 @@ pub const ML_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
 /// [`ML_SEMANTICS_ID`] for each `alice-det-math` generation this crate knows:
 /// `(alice_det_math::SEMANTICS_ID, fold of ML_SEMANTICS_PINS with that det-math entry)`.
 ///
-/// The crate requires `alice-det-math` 0.5.1, so there is one row. A later
+/// One row per `alice-det-math` generation this crate has been built with. A later
 /// `alice-det-math` release that moves `SEMANTICS_ID` stops the compile in
 /// [`semantics_id_for`] until its row is added, rather than reporting an identifier of
 /// another generation.
@@ -127,20 +127,30 @@ pub const ML_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
         hex32("85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315"),
         hex32("a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b"),
     ),
+    // alice-det-math 0.5.2 at 39507d1b (its clamp follows the G2 order)
+    (
+        hex32("a2e46794a49b62730d8eb75d10e6dbfdd59d6562a985ae94c716fc637a57e3cf"),
+        hex32("8464fe594013020b37c94d790f15167244074f3892a99d3c9030bd66ba4ed982"),
+    ),
 ];
 
 /// Content hash of the crate's float semantics: the fold of [`ML_SEMANTICS_PINS`]
 /// described in the [module documentation](self), taken from
 /// [`ML_SEMANTICS_BY_DET_MATH`] by the resolved `alice-det-math`.
 ///
-/// Hex (with `alice-det-math` 0.5.1):
-/// `a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b`.
+/// Hex (with `alice-det-math` 0.5.2 at 39507d1b):
+/// `8464fe594013020b37c94d790f15167244074f3892a99d3c9030bd66ba4ed982`.
 pub const ML_SEMANTICS_ID: [u8; 32] = semantics_id_for(&alice_det_math::SEMANTICS_ID);
 
 /// Earlier values of [`ML_SEMANTICS_ID`] under which every pinned kernel gives the same
-/// bits as this build, newest first. Empty: 0.4.0 is the first release with an
-/// identifier.
-pub const PREVIOUS_ML_SEMANTICS_IDS: &[[u8; 32]] = &[];
+/// bits as this build, newest first
+///
+/// `a5472370…` is the identifier with `alice-det-math` 0.5.1: the move to 0.5.2 at
+/// 39507d1b (whose clamp follows the G2 order) left every golden of
+/// `tests/determinism_golden.rs` unchanged, so only the det-math entry of the fold moved.
+pub const PREVIOUS_ML_SEMANTICS_IDS: &[[u8; 32]] = &[hex32(
+    "a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b",
+)];
 
 /// The [`ML_SEMANTICS_ID`] of a build that resolved the `alice-det-math` with identifier
 /// `det_math`.
