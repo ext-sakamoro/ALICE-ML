@@ -18,6 +18,7 @@ All notable changes to ALICE-ML will be documented in this file.
 
 ### Changed
 - Licence: `AGPL-3.0-or-later OR LicenseRef-Commercial` → `LicenseRef-Proprietary`
+- CI (ALICE-Law G11): shared-files と G11 の表の pin を ALICE-Law 9cb423c9 に上げ (self-check が pin と crate の tree を commit した bytes で読み、subprocess の出力を UTF-8 で読む)、README の ALICE-Law の節を 9cb423c9 から作り直した 共有の写しの bytes は同じ
 - CI: 共有の検査器 `scripts/id_move_check.py` と試験を ALICE-Law 0e8c14ec の target の bytes にし、shared-files の pin を 0e8c14ec に、`scripts/g11_self_check.sh` (ALICE-Law の `g11_self_check.py` を pin の rev で走らせる) を ci.yml と preflight に足し、G11 を pass にした
 - README / README_JP の licence の節を定型の行に、`fuzz/Cargo.toml` と `pyproject.toml` に `LicenseRef-Proprietary` を宣言した
 - CI: `scripts/run_tests.sh` と試験 `scripts/test_run_tests.py` を ALICE-LLM と同じ bytes にし、`.github/shared-files-pin` を ALICE-Law の新しい版に移す 名前 `lib` を library の単体試験として数えるようになったが、この repository は `lib` を名指さないので各段の試験の名前と件数は変わらない 試験 `scripts/test_public_text.py` を ALICE-SDF と同じ版にした (公開する text の検査を pin の checker で走らせ、置いた note link を tree と commit message で検出すること、pin の 3 行目 `config-sha256` が設定を承認することを確かめる、network を使う) `scripts/public_text.sh` と public-text の pin は変えないので検査の結果は変わらない
