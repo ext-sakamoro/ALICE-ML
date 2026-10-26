@@ -283,6 +283,12 @@ jobs:
       - name: no-direct-rkyv guard
         run: python3 scripts/no_direct_rkyv.py
 
+      # A git consumer (no sibling repositories next to it) builds alice-ml with the default
+      # features and with db; 0 crates compiled fails. This is the on-push check while the
+      # packaged-crate check is dormant (.github/workflows/package-integrity.yml)
+      - name: git consumer builds alice-ml alone
+        run: python3 scripts/test_git_consumer.py
+
   doc:
     runs-on: ubuntu-latest
     steps:

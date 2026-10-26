@@ -499,6 +499,12 @@ step "ci.yml / fmt: no-direct-rkyv guard"
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/no_direct_rkyv.py )
 )
 
+step "ci.yml / fmt: git consumer builds alice-ml alone"
+(
+  gh_step ci.yml.fmt
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/test_git_consumer.py )
+)
+
 step "ci.yml / doc: Doc (full native feature set)"
 (
   gh_step ci.yml.doc
@@ -616,31 +622,6 @@ step "security-audit.yml / stub-guard: Detect TODO / FIXME / XXX / HACK (informa
   else
     echo "✓ No TODO/FIXME/XXX/HACK in src/"
   fi
-)
-)
-
-step "security-audit.yml / package-integrity: cargo package (.crate を作る)"
-(
-  gh_step security-audit.yml.package-integrity
-( export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"; cargo package --no-verify --allow-dirty )
-)
-
-step "security-audit.yml / package-integrity: 展開して隔離 build"
-(
-  gh_step security-audit.yml.package-integrity
-(
-  export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5" CARGO_HTTP_MULTIPLEXING="false"
-  set -euo pipefail
-  crate=$(find "${CARGO_TARGET_DIR:-target}"/package -maxdepth 1 -name '*.crate' | head -1)
-  [ -n "$crate" ] || { echo "::error::.crate が生成されていない"; exit 1; }
-  echo "packaged: $(basename "$crate") ($(du -h "$crate" | cut -f1))"
-  tmp=$(mktemp -d)
-  tar xzf "$crate" -C "$tmp"
-  cd "$tmp"/*/
-  # 親 workspace を継承すると member 扱いになり、境界を越えた file が
-  # 再び見えてしまう (検査の意味が消える) ので単独 package として build
-  printf '\n[workspace]\n' >> Cargo.toml
-  cargo check --all-features
 )
 )
 
