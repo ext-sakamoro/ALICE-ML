@@ -94,34 +94,41 @@ fn another_identifier_is_the_mismatch_naming_both() {
     );
 }
 
-/// A file written under the identifier with `alice-det-math` 0.5.1 (`a5472370…`, kept in
-/// `PREVIOUS_ML_SEMANTICS_IDS`: every pinned kernel gives the same bits) reads back as
-/// `VerifiedPrevious` with the same layers, through both readers
+/// A file written under an earlier identifier (`8464fe59…`, alice-det-math 0.5.2 at 39507d1b, or
+/// `a5472370…`, 0.5.1) is refused naming both, through both readers: with alice-det-math at
+/// 2d01c63f the pinned kernels do not all give the bits those builds gave, so neither is a
+/// previous identifier (`tests/ml_semantics_id.rs`)
 #[test]
-fn a_file_with_the_previous_identifier_reads_as_verified_previous() {
-    let previous: [u8; 32] = core::array::from_fn(|i| {
-        u8::from_str_radix(
-            &"a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b"[2 * i..2 * i + 2],
-            16,
-        )
-        .expect("hex")
-    });
-    assert_ne!(previous, ML_SEMANTICS_ID);
-    let mut bytes = archive().serialize();
-    bytes[8..40].copy_from_slice(&previous);
-    let (read, provenance) =
-        ModelArchive::read(&bytes, LegacyPolicy::Refuse).expect("a previous identifier is read");
-    assert_eq!(provenance, Provenance::VerifiedPrevious(previous));
-    assert_eq!(read.layer_count(), 2);
-    let fc2 = read.find_layer("fc2").expect("fc2");
-    let own = archive();
-    let want = own.find_layer("fc2").expect("fc2");
-    assert_eq!(fc2.in_features, want.in_features);
-    assert_eq!(fc2.packed, want.packed);
-    assert!(
-        LayerStreamer::from_bytes(&bytes, StreamerConfig::default(), LegacyPolicy::Refuse).is_ok(),
-        "the streaming reader accepts the previous identifier too"
-    );
+fn a_file_with_an_earlier_identifier_is_the_mismatch_naming_both() {
+    let mut compared = 0;
+    for earlier in [
+        "8464fe594013020b37c94d790f15167244074f3892a99d3c9030bd66ba4ed982",
+        "a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b",
+    ] {
+        let stored: [u8; 32] = core::array::from_fn(|i| {
+            u8::from_str_radix(&earlier[2 * i..2 * i + 2], 16).expect("hex")
+        });
+        assert_ne!(stored, ML_SEMANTICS_ID);
+        let mut bytes = archive().serialize();
+        bytes[8..40].copy_from_slice(&stored);
+        let want = ArchiveError::SemanticsMismatch {
+            stored,
+            expected: ML_SEMANTICS_ID,
+        };
+        assert_eq!(
+            ModelArchive::read(&bytes, LegacyPolicy::Refuse).err(),
+            Some(want),
+            "{earlier}"
+        );
+        assert_eq!(
+            LayerStreamer::from_bytes(&bytes, StreamerConfig::default(), LegacyPolicy::Refuse)
+                .err(),
+            Some(want),
+            "{earlier}: the streaming reader"
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, 2);
 }
 
 #[test]

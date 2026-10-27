@@ -422,6 +422,91 @@ fn ffi_kernels_over_the_lattice() {
     g.finish("ffi", GOLDEN_FFI);
 }
 
+/// A one-layer model whose attention rotates by the position itself: `head_dim` 2, so the
+/// single `RoPE` frequency is `1 / theta^0 = 1` and the angle at position `p` is `p`.
+/// The value, output and query / key projections are identities and the FFN is zero, so the
+/// logits at `p` depend on the rotation of the query at `p` against every earlier key.
+#[cfg(feature = "safetensors")]
+fn rope_model() -> alice_ml::llama3_ternary::Llama3TernaryModel {
+    use alice_ml::llama3_ternary::{Llama3TernaryConfig, Llama3TernaryModel};
+    use alice_ml::TernaryWeight;
+    const H: usize = 4;
+    const KV: usize = 2;
+    let identity = |out: usize, inp: usize| {
+        let v: Vec<i8> = (0..out * inp)
+            .map(|k| i8::from(k / inp == k % inp))
+            .collect();
+        TernaryWeight::from_ternary(&v, out, inp)
+    };
+    let zero =
+        |out: usize, inp: usize| TernaryWeight::from_ternary(&vec![0i8; out * inp], out, inp);
+    let config = Llama3TernaryConfig {
+        vocab_size: 4,
+        hidden_dim: H,
+        intermediate_dim: H,
+        num_heads: 2,
+        num_kv_heads: 1,
+        num_layers: 1,
+        max_seq_len: ROPE_POSITIONS,
+        head_dim: 2,
+        rope_theta: 500_000.0,
+        norm_eps: 1e-5,
+    };
+    // row t is t·4 + 1 .. t·4 + 4: distinct, non-degenerate, built in integers
+    let embedding: Vec<f32> = (0..4 * H)
+        .map(|k| f32::from(u16::try_from(k % H + 1 + 4 * (k / H)).expect("small")))
+        .collect();
+    let projs = vec![
+        identity(H, H),
+        identity(KV, H),
+        identity(KV, H),
+        identity(H, H),
+        zero(H, H),
+        zero(H, H),
+        zero(H, H),
+    ];
+    Llama3TernaryModel::from_parts(
+        config,
+        embedding,
+        vec![1.0; H],
+        identity(H, H),
+        vec![(vec![1.0; H], vec![1.0; H], projs)],
+    )
+}
+
+/// Positions the `RoPE` goldens run to: the last 64 below `2^13` and the first 64 from it
+#[cfg(feature = "safetensors")]
+const ROPE_POSITIONS: usize = 8192 + 64;
+
+/// The logits at positions `8128..8192` and `8192..8256` of [`rope_model`] fed tokens
+/// `p mod 4`. `alice-det-math`'s `sin_cos` reduces `|x| < 2^13` in single precision and larger
+/// arguments in double precision (since 2d01c63f), so the first window pins the single-precision
+/// path and the second the double-precision one.
+#[cfg(feature = "safetensors")]
+fn rope_windows() -> (Golden, Golden) {
+    let mut model = rope_model();
+    let mut below = Golden::new("rope_below_2_13");
+    let mut above = Golden::new("rope_from_2_13");
+    for p in 0..ROPE_POSITIONS {
+        let logits = model.forward(u32::try_from(p % 4).expect("a token below 4"));
+        if (ROPE_POSITIONS - 128..8192).contains(&p) {
+            below.f32s(&logits);
+        } else if p >= 8192 {
+            above.f32s(&logits);
+        }
+    }
+    (below, above)
+}
+
+#[cfg(feature = "safetensors")]
+#[test]
+fn rope_below_and_from_2_13() {
+    let (g, above) = rope_windows();
+    g.finish("rope_below_2_13", GOLDEN_ROPE_BELOW_2_13);
+    let g = above;
+    g.finish("rope_from_2_13", GOLDEN_ROPE_FROM_2_13);
+}
+
 // recorded digests (see the module documentation)
 const GOLDEN_RELU: &str = "eb212a7bfd02a74cd9c30587ddd268e2d63610d92de8eb2364cf99d166fd43f3";
 const GOLDEN_MAX_MIN: &str = "8a2bc26d6793bb71db4c654834f5e99b1a4c8d621dc338406390f7ccea7aed0b";
@@ -432,6 +517,12 @@ const GOLDEN_CROSS_ENTROPY: &str =
     "9f8a614a5ed5fd15708cbf64979538246d7a07e7ce7dcc8e3a1eef48edcf3942";
 const GOLDEN_CALIBRATION: &str = "390365518b328c524fc18fff90190baac69856a975f144c3e52f4d66d6dd6f0d";
 const GOLDEN_ERROR_PROPAGATION: &str =
-    "dbd40bac666f357893a8afffd7a69af8b06eb7abcf397bf2fba3a383148685ff";
+    "cef6d92869c8990d068fa59673af0b272a59c35868f784533bd4951a91eaf52e";
 #[cfg(feature = "ffi")]
 const GOLDEN_FFI: &str = "738bd4170174a7112ce57923999bb3229da5e325f902601fc72a862ff9235ce0";
+#[cfg(feature = "safetensors")]
+const GOLDEN_ROPE_BELOW_2_13: &str =
+    "e6097785b5a566fac3b64b8360242bf99ffd66f1d460d9c6f94112b9327bbefe";
+#[cfg(feature = "safetensors")]
+const GOLDEN_ROPE_FROM_2_13: &str =
+    "4631d545e20dc6d6c4eeceb8c506ccef10400e44280e79cff33a0caef4854ad1";

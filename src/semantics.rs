@@ -10,7 +10,7 @@
 //! # Hex form (with `alice-det-math` 0.5.2 at 39507d1b; other generations in [`ML_SEMANTICS_BY_DET_MATH`])
 //!
 //! ```text
-//! 8464fe594013020b37c94d790f15167244074f3892a99d3c9030bd66ba4ed982
+//! 14e0f0435562e1fa77ab0ce071c85c422fd3f64122aaaf2e73d110264b5356b6
 //! ```
 //!
 //! # Entries
@@ -103,11 +103,19 @@ pub const ML_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
     ),
     (
         "error_propagation",
-        hex32("dbd40bac666f357893a8afffd7a69af8b06eb7abcf397bf2fba3a383148685ff"),
+        hex32("cef6d92869c8990d068fa59673af0b272a59c35868f784533bd4951a91eaf52e"),
     ),
     (
         "ffi",
         hex32("738bd4170174a7112ce57923999bb3229da5e325f902601fc72a862ff9235ce0"),
+    ),
+    (
+        "rope_below_2_13",
+        hex32("e6097785b5a566fac3b64b8360242bf99ffd66f1d460d9c6f94112b9327bbefe"),
+    ),
+    (
+        "rope_from_2_13",
+        hex32("4631d545e20dc6d6c4eeceb8c506ccef10400e44280e79cff33a0caef4854ad1"),
     ),
     // the resolved alice-det-math's own identifier, not a copy: the identifier below is
     // looked up by it
@@ -122,15 +130,14 @@ pub const ML_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
 /// [`semantics_id_for`] until its row is added, rather than reporting an identifier of
 /// another generation.
 pub const ML_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
-    // alice-det-math 0.5.1
+    // alice-det-math 0.5.2 at 2d01c63f (sin / cos at |x| >= 2^13 through sin64 / cos64, powf
+    // of a negative base, powf64 as fdlibm e_pow, hypot of two subnormals; erf added). The rows
+    // of the earlier generations (0.5.1, 0.5.2 at 39507d1b) are not folds of these pins any more
+    // (`error_propagation` moved and the `RoPE` goldens were added); their identifiers are in
+    // the frozen table of `tests/ml_semantics_id.rs`
     (
-        hex32("85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315"),
-        hex32("a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b"),
-    ),
-    // alice-det-math 0.5.2 at 39507d1b (its clamp follows the G2 order)
-    (
-        hex32("a2e46794a49b62730d8eb75d10e6dbfdd59d6562a985ae94c716fc637a57e3cf"),
-        hex32("8464fe594013020b37c94d790f15167244074f3892a99d3c9030bd66ba4ed982"),
+        hex32("a2a11b9b826227fa7a9ed8ab2c1ce63dbb07ad4c39aa2c46a363ddea6b47dbe9"),
+        hex32("14e0f0435562e1fa77ab0ce071c85c422fd3f64122aaaf2e73d110264b5356b6"),
     ),
 ];
 
@@ -138,19 +145,19 @@ pub const ML_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
 /// described in the [module documentation](self), taken from
 /// [`ML_SEMANTICS_BY_DET_MATH`] by the resolved `alice-det-math`.
 ///
-/// Hex (with `alice-det-math` 0.5.2 at 39507d1b):
-/// `8464fe594013020b37c94d790f15167244074f3892a99d3c9030bd66ba4ed982`.
+/// Hex (with `alice-det-math` 0.5.2 at 2d01c63f):
+/// `14e0f0435562e1fa77ab0ce071c85c422fd3f64122aaaf2e73d110264b5356b6`.
 pub const ML_SEMANTICS_ID: [u8; 32] = semantics_id_for(&alice_det_math::SEMANTICS_ID);
 
 /// Earlier values of [`ML_SEMANTICS_ID`] under which every pinned kernel gives the same
 /// bits as this build, newest first
 ///
-/// `a5472370…` is the identifier with `alice-det-math` 0.5.1: the move to 0.5.2 at
-/// 39507d1b (whose clamp follows the G2 order) left every golden of
-/// `tests/determinism_golden.rs` unchanged, so only the det-math entry of the fold moved.
-pub const PREVIOUS_ML_SEMANTICS_IDS: &[[u8; 32]] = &[hex32(
-    "a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b",
-)];
+/// Empty: with `alice-det-math` at 2d01c63f the `error_propagation` golden moved (`powf64` is
+/// fdlibm `e_pow`) and the `RoPE` path moved from position `2^13` on (`sin_cos` reduces those
+/// arguments in double precision), so neither `8464fe59…` (0.5.2 at 39507d1b) nor `a5472370…`
+/// (0.5.1) names this build's bits; data stamped with them reads as a mismatch.
+/// `tests/ml_semantics_id.rs` shows which pins moved.
+pub const PREVIOUS_ML_SEMANTICS_IDS: &[[u8; 32]] = &[];
 
 /// The [`ML_SEMANTICS_ID`] of a build that resolved the `alice-det-math` with identifier
 /// `det_math`.
