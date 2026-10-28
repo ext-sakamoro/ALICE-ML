@@ -32,7 +32,7 @@ libm = "0.2"
 # calibration の exp / ln 用 platform libm は target ごとに最終 ulp が異なり、
 # 同じ予測から違う校正値が出てしまう crates.io 公開版なので path dep ではない
 # (= sibling checkout が要らない)
-alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "2d01c63ff0849cf0ab82eafb89f87f1b729bd2a8", version = "0.5.2", default-features = false }
+alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "b4e3d9464dcf1d32dcf56649b4546c73209fcb37", version = "0.6.0", default-features = false }
 rayon = { version = "1.10", optional = true }
 pyo3 = { version = "0.29", features = ["extension-module"], optional = true }
 numpy = { version = "0.29", optional = true }
