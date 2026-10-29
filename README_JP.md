@@ -163,10 +163,10 @@ cargo bench --features simd  # criterion benchmark、benches/matmul.rs 参照
 - [ALICE-DB](https://github.com/ext-sakamoro/ALICE-DB) — 学習 metric の persistence
   (feature `db`)
 
-<!-- law-integration:begin law=9cb423c95a03bf34b845933190d1b5bce68fbde6 -->
+<!-- law-integration:begin law=7f5f4cbde8343a061051bb1addd30f1f0b3bea1e -->
 ## ALICE-Law との統合
 
-ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `9cb423c95a03` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
+ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `7f5f4cbde834` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
 
 | | |
 |---|---|
@@ -192,6 +192,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `9cb423c95a03` と
 | G12 public-repo-text-rules | 適合 | the workflow fetches ALICE-Law's scripts/public_text_check.py at the revision in .github/public-text-pin (779fa443f95bc0caca5ca2d5bdb9156051fd6143) and refuses … |
 | G13 no-unspecified-order | 適合 | the batch computes each output row in one task and combines no float across tasks, so its bits do not depend on the thread count; the test is what keeps it so. … |
 | G14 float-environment-invariants | 適合 | the static scan covers the files of this repository (.cargo/mutants.toml included) and the dynamic check covers the builds CI runs on ubuntu and macOS (the … |
+| G15 surface-claims | 未申告 |  |
 
 ### feature と保証の範囲
 
