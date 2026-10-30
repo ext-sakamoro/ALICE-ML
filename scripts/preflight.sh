@@ -429,6 +429,16 @@ step "ci.yml / clippy: Identifier moves (tests)"
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"; python3 scripts/test_id_move_check.py )
 )
 
+step "ci.yml / clippy: Gated test files are run"
+(
+  gh_step ci.yml.clippy
+(
+  export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="ffi,simd,parallel,safetensors,db"
+  python3 scripts/test_gated_tests.py
+  python3 scripts/gated_tests.py
+)
+)
+
 step "ci.yml / clippy: Identifier moves (the release compared with)"
 (
   gh_step ci.yml.clippy
