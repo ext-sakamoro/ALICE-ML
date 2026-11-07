@@ -72,6 +72,7 @@ jobs:
           case $rc in 0|2|3) ;; *) echo "::error::cargo-mutants exit $rc (baseline red or usage error)"; exit $rc;; esac
       - name: Summary
         if: always()
+        shell: bash
         run: |
           {
             echo "## cargo-mutants (${{ github.event_name == 'pull_request' && 'in-diff' || format('shard {0}/16', matrix.shard) }})"

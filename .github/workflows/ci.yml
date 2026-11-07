@@ -62,6 +62,10 @@ jobs:
       # ALICE-LOL's, built with --locked): its own tests, then the check over src/ tests/
       # examples/ benches/ with the exact fma-call counts of
       # scripts/no-outer-fneg-of-fma-allowlist.toml (2, both in tests/); the IR half is g3-ir.yml
+      - name: workflow_pipefail (test, then check)
+        run: |
+          python3 scripts/test_workflow_pipefail.py
+          python3 scripts/workflow_pipefail.py
       - name: No negated fma result (syntax tree, tests then check)
         shell: bash
         run: |

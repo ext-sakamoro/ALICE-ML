@@ -17,6 +17,7 @@ All notable changes to ALICE-ML will be documented in this file.
 - CI (ALICE-Law G3): fma の結果全体を negate する形の検査を追加 (ALICE-LOL と同一の構文木の前段検査 `tools/no-outer-fneg-of-fma` を `--locked` で、最適化後の LLVM IR の検査 `scripts/fneg_fma_ir_check.py` と試験、47 個の probe) library の source に fma の呼び出しは無く、test に 2 件 (どちらも negate しない)、`assert!` の中の 1 件は理由付きで allowlist に置いた IR の検査は新しい `.github/workflows/g3-ir.yml` が x86_64 (ubuntu-latest) と aarch64 (ubuntu-24.04-arm) の実機 runner で実行する (pyo3 は cross build できない) 実行可否は `scripts/changed_paths.py` (ALICE-DetMath と同一) と `.github/paths/g3-ir.txt` で merge-base(origin/main) から決め、走るべき job が走らなかった時は gate job が red になる `.gitignore` で検査器の `Cargo.lock` を追跡対象にした `alice-law-conformance.toml` の G3 を unverified から pass にした
 
 ### Changed
+- CI: `scripts/workflow_pipefail.py` (試験 `scripts/test_workflow_pipefail.py`、他の repo と同じ中身) が、pipe する `run` step が pipefail で走るかを全 workflow で確かめる 該当の step を `shell: bash` にした
 - CI: toolchain の action を上流の master から届く commit に固定した 固定していた sha は上流の branch の書き換えで届かなくなっていた
 - CI: 共有の `scripts/semver_gate.py`、`scripts/test_semver_gate.py`、`scripts/release_baseline.py`、`scripts/test_release_baseline.py` の subprocess に `encoding="utf-8"` を明示した (text mode は既定で locale の符号化で読むため) ALICE-Law の pin を今の版へ移した
 - CI (ALICE-Law G11): 共有の `scripts/gated_tests.py` と試験を ALICE-Law の表の計画した bytes で入れ、機能で gate された試験 file がどれも CI と preflight の `cargo test` で走ることを検査する (この repository の設定は `scripts/gated_tests.toml`)
