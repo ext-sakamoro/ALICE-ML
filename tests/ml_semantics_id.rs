@@ -1,10 +1,10 @@
 //! `ML_SEMANTICS_ID` (ALICE-Law G6) against its sources: the entries are exactly the
-//! goldens of `tests/determinism_golden.rs` (read from the source, not a copy) plus
-//! `alice-det-math`, and every row of `ML_SEMANTICS_BY_DET_MATH` is the fold of the pins
-//! with that row's det-math identifier.
+//! goldens of `tests/determinism_golden.rs` (read from the source, not a copy), each
+//! `DET_MATH_PINS` entry is the resolved `alice-det-math`'s, and the identifier is the fold
+//! of both (the alice-det-math pins under `det-math <function>`).
 
 use alice_ml::semantics::{
-    semantics_id_for, ML_SEMANTICS_BY_DET_MATH, ML_SEMANTICS_ID, ML_SEMANTICS_PINS,
+    DET_MATH_FUNCTIONS, DET_MATH_PINS, ML_SEMANTICS_ID, ML_SEMANTICS_PINS,
     PREVIOUS_ML_SEMANTICS_IDS,
 };
 use sha2::{Digest, Sha256};
@@ -41,6 +41,25 @@ fn fold(entries: &[(&str, [u8; 32])]) -> [u8; 32] {
     h.finalize().into()
 }
 
+/// Every entry the identifier folds: [`ML_SEMANTICS_PINS`] and, under `det-math <function>`,
+/// [`DET_MATH_PINS`]
+fn all_entries() -> Vec<(String, [u8; 32])> {
+    ML_SEMANTICS_PINS
+        .iter()
+        .map(|(n, d)| ((*n).to_owned(), *d))
+        .chain(
+            DET_MATH_PINS
+                .iter()
+                .map(|(n, d)| (format!("det-math {n}"), *d)),
+        )
+        .collect()
+}
+
+fn fold_all(entries: &[(String, [u8; 32])]) -> [u8; 32] {
+    let borrowed: Vec<(&str, [u8; 32])> = entries.iter().map(|(n, d)| (n.as_str(), *d)).collect();
+    fold(&borrowed)
+}
+
 /// `(label, digest)` of every golden, read from the source of the golden tests.
 fn goldens_from_source() -> BTreeMap<String, String> {
     let src = include_str!("determinism_golden.rs");
@@ -75,7 +94,7 @@ fn goldens_from_source() -> BTreeMap<String, String> {
 }
 
 #[test]
-fn entries_are_the_goldens_plus_det_math() {
+fn entries_are_the_goldens() {
     let goldens = goldens_from_source();
     let mut pins: BTreeMap<String, String> = BTreeMap::new();
     for (name, digest) in ML_SEMANTICS_PINS {
@@ -84,10 +103,9 @@ fn entries_are_the_goldens_plus_det_math() {
             "{name} twice"
         );
     }
-    assert_eq!(
-        pins.remove("alice-det-math").as_deref(),
-        Some(hex(&alice_det_math::SEMANTICS_ID).as_str()),
-        "the det-math entry is the resolved alice-det-math's identifier"
+    assert!(
+        !pins.contains_key("alice-det-math"),
+        "alice-det-math is folded per function (det-math <function>), not as a whole"
     );
     assert_eq!(
         pins, goldens,
@@ -96,34 +114,42 @@ fn entries_are_the_goldens_plus_det_math() {
     assert_eq!(goldens.len(), 11);
 }
 
+/// Each alice-det-math function this crate calls has one pin, in the list's order, and it is
+/// the resolved alice-det-math's own identifier of that function
 #[test]
-fn every_row_is_the_fold_of_the_pins() {
-    assert!(!ML_SEMANTICS_BY_DET_MATH.is_empty());
-    for (det_math, id) in ML_SEMANTICS_BY_DET_MATH {
-        let entries: Vec<(&str, [u8; 32])> = ML_SEMANTICS_PINS
-            .iter()
-            .map(|&(n, d)| {
-                if n == "alice-det-math" {
-                    (n, *det_math)
-                } else {
-                    (n, d)
-                }
-            })
-            .collect();
-        assert_eq!(
-            hex(&fold(&entries)),
-            hex(id),
-            "row for det-math {}",
-            hex(det_math)
-        );
+fn the_det_math_pins_are_the_resolved_function_identifiers() {
+    let names: Vec<&str> = DET_MATH_PINS.iter().map(|(n, _)| *n).collect();
+    assert_eq!(names, DET_MATH_FUNCTIONS);
+    assert!(!DET_MATH_PINS.is_empty(), "compared nothing");
+    for (name, pin) in DET_MATH_PINS {
+        assert_eq!(*pin, alice_det_math::function_pin(name), "{name}");
     }
-    assert_eq!(
-        ML_SEMANTICS_ID,
-        semantics_id_for(&alice_det_math::SEMANTICS_ID)
-    );
+}
+
+#[test]
+fn the_identifier_is_the_fold_of_the_goldens_and_the_det_math_pins() {
+    assert_eq!(hex(&fold_all(&all_entries())), hex(&ML_SEMANTICS_ID));
     // an earlier identifier is never the current one
     assert!(!PREVIOUS_ML_SEMANTICS_IDS.contains(&ML_SEMANTICS_ID));
-    assert_eq!(hex(&ML_SEMANTICS_ID), hex(&fold(ML_SEMANTICS_PINS)));
+}
+
+/// The previous identifier `14e0f043…` is these goldens with alice-det-math 0.5.2 at 2d01c63f
+/// folded as a whole (`a2a11b9b…`): the goldens did not move when the functions were folded
+/// one by one, so data stamped with it reads back as these bits
+#[test]
+fn the_previous_identifier_is_these_goldens_with_the_whole_det_math_identifier() {
+    let mut entries: Vec<(&str, [u8; 32])> = ML_SEMANTICS_PINS.to_vec();
+    let det = "a2a11b9b826227fa7a9ed8ab2c1ce63dbb07ad4c39aa2c46a363ddea6b47dbe9";
+    entries.push((
+        "alice-det-math",
+        core::array::from_fn(|i| u8::from_str_radix(&det[2 * i..2 * i + 2], 16).expect("hex")),
+    ));
+    let previous = fold(&entries);
+    assert_eq!(
+        hex(&previous),
+        "14e0f0435562e1fa77ab0ce071c85c422fd3f64122aaaf2e73d110264b5356b6"
+    );
+    assert_eq!(PREVIOUS_ML_SEMANTICS_IDS, [previous]);
 }
 
 #[test]
@@ -131,8 +157,9 @@ fn the_documented_hex_is_the_identifier() {
     assert_eq!(
         hex(&ML_SEMANTICS_ID),
         // the fold recomputed outside this toolchain from the documented procedure, which
-        // also reproduces 8464fe59… from the frozen table below
-        "14e0f0435562e1fa77ab0ce071c85c422fd3f64122aaaf2e73d110264b5356b6"
+        // also reproduces 8464fe59… from the frozen table below and 14e0f043… from the whole
+        // det-math identifier
+        "2c7e07c50c30b70d48c2540189e2431c7754c13c01b92056b7ca18075644dc27"
     );
 }
 
@@ -202,7 +229,7 @@ fn fold_hex(entries: &[(&str, &str)]) -> [u8; 32] {
 /// position `2^13` has the bits it had under 39507d1b while the one from `2^13` on moved
 /// (`sin_cos` reduces those arguments in double precision). Every other pin is unchanged; a
 /// further change to any kernel moves this set and fails here. `a5472370…` (0.5.1) relied on
-/// the same goldens, so neither is in `PREVIOUS_ML_SEMANTICS_IDS`.
+/// the same goldens, so neither is in `PREVIOUS_ML_SEMANTICS_IDS` (which holds `14e0f043…`).
 #[test]
 fn the_8464fe59_identifier_is_rejected_because_exactly_these_pins_moved() {
     assert_eq!(
@@ -229,7 +256,6 @@ fn the_8464fe59_identifier_is_rejected_because_exactly_these_pins_moved() {
     assert_eq!(moved, ["error_propagation"]);
     assert_eq!(now["rope_below_2_13"], ROPE_BELOW_2_13_AT_39507D1B);
     assert_ne!(now["rope_from_2_13"], ROPE_FROM_2_13_AT_39507D1B);
-    assert!(PREVIOUS_ML_SEMANTICS_IDS.is_empty());
     for id in [
         "8464fe594013020b37c94d790f15167244074f3892a99d3c9030bd66ba4ed982",
         "a547237044e8fdba9ab152f7af13c431f675e5382e4e8cb40aa8c83c46bb606b",
@@ -243,17 +269,18 @@ fn the_8464fe59_identifier_is_rejected_because_exactly_these_pins_moved() {
 
 #[test]
 fn the_fold_sees_every_entry_and_its_order_does_not_matter() {
-    let base = fold(ML_SEMANTICS_PINS);
-    // a moved golden moves the identifier
-    for i in 0..ML_SEMANTICS_PINS.len() {
-        let mut moved: Vec<_> = ML_SEMANTICS_PINS.to_vec();
+    let all = all_entries();
+    let base = fold_all(&all);
+    // a moved golden or det-math pin moves the identifier
+    for i in 0..all.len() {
+        let mut moved = all.clone();
         moved[i].1[0] ^= 1;
-        assert_ne!(fold(&moved), base, "entry {} is not folded", moved[i].0);
+        assert_ne!(fold_all(&moved), base, "entry {} is not folded", moved[i].0);
     }
     // a dropped entry moves it
-    assert_ne!(fold(&ML_SEMANTICS_PINS[1..]), base);
+    assert_ne!(fold_all(&all[1..]), base);
     // the order the table is written in does not
-    let mut reversed: Vec<_> = ML_SEMANTICS_PINS.to_vec();
+    let mut reversed = all;
     reversed.reverse();
-    assert_eq!(fold(&reversed), base);
+    assert_eq!(fold_all(&reversed), base);
 }
