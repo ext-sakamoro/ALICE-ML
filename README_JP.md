@@ -163,10 +163,10 @@ cargo bench --features simd  # criterion benchmark、benches/matmul.rs 参照
 - [ALICE-DB](https://github.com/ext-sakamoro/ALICE-DB) — 学習 metric の persistence
   (feature `db`)
 
-<!-- law-integration:begin law=40973a8a7a679e6befac9a49b76cd4425165128f -->
+<!-- law-integration:begin law=5b19cf68bf4e7b8fc80c01e486a8c3436de98af0 -->
 ## ALICE-Law との統合
 
-ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `40973a8a7a67` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
+ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5b19cf68bf4e` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
 
 | | |
 |---|---|
