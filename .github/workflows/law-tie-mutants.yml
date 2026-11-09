@@ -29,9 +29,12 @@ on:
     - cron: '40 19 * * 0'
   workflow_dispatch:
 
+# one group per ref: a branch's run never replaces or cancels another branch's waiting run (with
+# one group for every branch, each new push replaced the waiting run of another branch); a newer
+# push on the same ci/** branch cancels that branch's older run, and a main run is not cut off
 concurrency:
-  group: ${{ github.workflow }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
