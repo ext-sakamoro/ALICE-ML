@@ -36,7 +36,7 @@ alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", branch
 rayon = { version = "1.10", optional = true }
 pyo3 = { version = "0.29", features = ["extension-module"], optional = true }
 numpy = { version = "0.29", optional = true }
-alice-db = { git = "https://github.com/ext-sakamoro/ALICE-DB", branch = "main", version = "0.6", optional = true, default-features = false, features = ["fs"] }
+alice-db = { git = "https://github.com/ext-sakamoro/ALICE-DB", branch = "main", version = "0.7", optional = true, default-features = false, features = ["fs"] }
 
 [dev-dependencies]
 # tests/determinism_golden.rs: SHA-256 of output bit patterns

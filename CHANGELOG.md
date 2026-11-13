@@ -4,6 +4,9 @@ All notable changes to ALICE-ML will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- 依存: alice-db 0.7 (展開は上限付きだけ、blob の圧縮値に元の長さを記録、config は `#[non_exhaustive]`) この crate は config を組み立てないので code の変更なし
+
 ### Added
 - `conformance/g11-own.toml`: ALICE-Law G11 の表のうち、この crate 固有の行 (G4 / G5 の golden、G6 の識別子、G7 / G8 の ATML の識別子の照合、比較 0 件は `scripts/run_tests.sh` の試験) 共有の検査器の行は ALICE-Law の `conformance/g11-shared-rows.toml` から生成する
 - CI (ALICE-Law G11): test job の Law edge goldens (debug、全 native feature) の `scripts/run_tests.sh` に `ml_semantics_id` / `atml_semantics` / `g7_boundaries` を足した 識別子と ATML の試験の binary が 1 件も走らない時に step が落ちる `tests/determinism_golden.rs` の照合を `Golden::mismatch` に分け、`checker_rejects_a_wrong_digest` が動いた bit (-0 から +0) の digest が記録と一致しないことを確かめる (照合を常に一致にする変異でこの試験だけが失敗する)
