@@ -5,6 +5,7 @@ All notable changes to ALICE-ML will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- CI (ALICE-Law G11 (c)): この repository が持つ共有の写しのうち表で移行中の行 10 件を各 owner の main と同じ target の bytes にし、`.github/shared-files-pin` / `.github/g11-table-pin` / `.github/public-text-pin` を ALICE-Law 5e397e3 に上げた (移行中の行の写しがすべて target、指摘 0)
 - 依存: alice-db 0.7 (展開は上限付きだけ、blob の圧縮値に元の長さを記録、config は `#[non_exhaustive]`) この crate は config を組み立てないので code の変更なし
 
 ### Added

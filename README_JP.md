@@ -163,15 +163,15 @@ cargo bench --features simd  # criterion benchmark、benches/matmul.rs 参照
 - [ALICE-DB](https://github.com/ext-sakamoro/ALICE-DB) — 学習 metric の persistence
   (feature `db`)
 
-<!-- law-integration:begin law=5b19cf68bf4e7b8fc80c01e486a8c3436de98af0 -->
+<!-- law-integration:begin law=5e397e32dee4d3a172c60f3517579c8da77d2502 -->
 ## ALICE-Law との統合
 
-ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5b19cf68bf4e` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
+ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5e397e32dee4` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
 
 | | |
 |---|---|
-| release train | alice-ml 0.2.0 (published)、Law への依存: なし |
-| 算術 | train の alice-det-math 0.5.1、算術の識別子 `85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315` この crate の要求は `alice-det-math = "0.6"` |
+| release train | alice-ml 0.4.0 (main 0de3abd996ea)、Law への依存: なし |
+| 算術 | main branch の alice-det-math 0.6.1、算術の識別子 `6fc214e924c53557f33775df51f1f8dfe2f246d67a9e493d6fb5837d999022f2` この crate の要求は `alice-det-math = "0.6"` |
 | end to end 検査 | end to end 検査の対象外 |
 
 ### 適合 (G1-G14)
@@ -189,7 +189,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5b19cf68bf4e` と
 | G9 persisted-meaning-change-is-major | 適合 | definition: ML_SEMANTICS_ID ([[id]] in scripts/id_move.toml with PREVIOUS_ML_SEMANTICS_IDS) may move only with a breaking version, or keeping the released … |
 | G10 no-run-varying-artifacts | 適合 | the ban covers what src/ can reach: the clock and RandomState through std, and nothing else, because no direct dependency offers an RNG or a UUID (rand is a … |
 | G11 gate-self-tests | 適合 | met: (a) every gate declared pass has a G11 row naming its checker, canary and compared-nothing test (scripts/g11_table.sh: 0 findings); (b) the checkers fail … |
-| G12 public-repo-text-rules | 適合 | the workflow fetches ALICE-Law's scripts/public_text_check.py at the revision in .github/public-text-pin (779fa443f95bc0caca5ca2d5bdb9156051fd6143) and refuses … |
+| G12 public-repo-text-rules | 適合 | the workflow fetches ALICE-Law's scripts/public_text_check.py at the revision in .github/public-text-pin (5e397e32dee4d3a172c60f3517579c8da77d2502) and refuses … |
 | G13 no-unspecified-order | 適合 | the batch computes each output row in one task and combines no float across tasks, so its bits do not depend on the thread count; the test is what keeps it so. … |
 | G14 float-environment-invariants | 適合 | the static scan covers the files of this repository (.cargo/mutants.toml included) and the dynamic check covers the builds CI runs on ubuntu and macOS (the … |
 | G15 surface-claims | 未申告 |  |
